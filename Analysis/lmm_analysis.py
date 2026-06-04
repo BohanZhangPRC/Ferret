@@ -127,11 +127,11 @@ def build_lmm_dataframe(traj_by_half, mapping_label, time_array,
             session_str = f"{mapping_label}_{exp_name}_s{sess_idx:03d}"
 
             if split_half:
-                # Two rows per neuron: H1 and H2
-                for hi, half_name in enumerate(['H1', 'H2']):
-                    mean_track = sd['track'][hi]
-                    mean_pb    = sd['pb'][hi]
-                    for n in range(n_neurons):
+                # Each neuron appears in both H1 and H2 with same neuron_id
+                for n in range(n_neurons):
+                    for hi, half_name in enumerate(['H1', 'H2']):
+                        mean_track = sd['track'][hi]
+                        mean_pb    = sd['pb'][hi]
                         records.append({
                             'response': mean_track[n], 'condition': 'Track',
                             'mapping': mapping_label, 'expertise': exp_name,
@@ -144,7 +144,7 @@ def build_lmm_dataframe(traj_by_half, mapping_label, time_array,
                             'half': half_name, 'session_id': session_str,
                             'neuron_id': f"{mapping_label}_{session_str}_n{neuron_global_id}",
                         })
-                        neuron_global_id += 1
+                    neuron_global_id += 1
             else:
                 # Average H1 and H2 for ALL-trial response
                 mean_track = np.mean(sd['track'], axis=0)

@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.patches as mpatches
 from scipy.integrate import trapezoid
-from scipy.stats import chi2, ttest_ind
+from scipy.stats import chi2, ttest_1samp
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.stats.multitest import multipletests
@@ -136,13 +136,13 @@ def build_lmm_dataframe(traj_by_half, mapping_label, time_array,
                             'response': mean_track[n], 'condition': 'Track',
                             'mapping': mapping_label, 'expertise': exp_name,
                             'half': half_name, 'session_id': session_str,
-                            'neuron_id': neuron_global_id,
+                            'neuron_id': f"{mapping_label}_{session_str}_n{neuron_global_id}",
                         })
                         records.append({
                             'response': mean_pb[n], 'condition': 'Playback',
                             'mapping': mapping_label, 'expertise': exp_name,
                             'half': half_name, 'session_id': session_str,
-                            'neuron_id': neuron_global_id,
+                            'neuron_id': f"{mapping_label}_{session_str}_n{neuron_global_id}",
                         })
                         neuron_global_id += 1
             else:
@@ -154,13 +154,13 @@ def build_lmm_dataframe(traj_by_half, mapping_label, time_array,
                         'response': mean_track[n], 'condition': 'Track',
                         'mapping': mapping_label, 'expertise': exp_name,
                         'half': 'All', 'session_id': session_str,
-                        'neuron_id': neuron_global_id,
+                        'neuron_id': f"{mapping_label}_{session_str}_n{neuron_global_id}",
                     })
                     records.append({
                         'response': mean_pb[n], 'condition': 'Playback',
                         'mapping': mapping_label, 'expertise': exp_name,
                         'half': 'All', 'session_id': session_str,
-                        'neuron_id': neuron_global_id,
+                        'neuron_id': f"{mapping_label}_{session_str}_n{neuron_global_id}",
                     })
                     neuron_global_id += 1
 
@@ -253,7 +253,8 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
 
     # Model 1: Random Intercept per neuron (REML)
     print("\n-- Fitting Model 1: Random Intercept per neuron (REML) --")
-    model1 = smf.mixedlm(formula_full, df_lmm, groups=df_lmm["neuron_id"])
+    model1 = smf.mixedlm(formula_full, df_lmm, groups=df_lmm["neuron_id"],
+                         vc_formula={"session_id": "0 + C(session_id)"})
     result1 = model1.fit(reml=True)
     print(f"  Converged: {result1.converged}, LogLik: {result1.llf:.2f}")
 
@@ -263,7 +264,8 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
     try:
         model2 = smf.mixedlm(
             formula_full, df_lmm, groups=df_lmm["neuron_id"],
-            re_formula="~ condition"
+            re_formula="~ condition",
+            vc_formula={"session_id": "0 + C(session_id)"}
         )
         result2 = model2.fit(reml=True)
         print(f"  Converged: {result2.converged}, LogLik: {result2.llf:.2f}")
@@ -282,12 +284,14 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
 
     # Refit with ML for Likelihood Ratio Tests
     print("\n-- Refitting with ML for LRT --")
-    result1_ml = smf.mixedlm(formula_full, df_lmm, groups=df_lmm["neuron_id"]).fit(reml=False)
+    result1_ml = smf.mixedlm(formula_full, df_lmm, groups=df_lmm["neuron_id"],
+                             vc_formula={"session_id": "0 + C(session_id)"}).fit(reml=False)
     print(f"  Model 1 (ML): LL = {result1_ml.llf:.2f}")
     if used_random_slope:
         result2_ml = smf.mixedlm(
             formula_full, df_lmm, groups=df_lmm["neuron_id"],
-            re_formula="~ condition"
+            re_formula="~ condition",
+            vc_formula={"session_id": "0 + C(session_id)"}
         ).fit(reml=False)
         print(f"  Model 2 (ML): LL = {result2_ml.llf:.2f}")
     else:
@@ -342,7 +346,8 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
     formula_no_cond = "response ~ mapping * expertise * half"
     model_no_cond = smf.mixedlm(
         formula_no_cond, df_lmm, groups=df_lmm["neuron_id"],
-        re_formula=re_formula_lrt
+        re_formula=re_formula_lrt,
+        vc_formula={"session_id": "0 + C(session_id)"}
     ).fit(reml=False)
 
     lr_stat_cond = 2 * max(0, result2_ml.llf - model_no_cond.llf)
@@ -358,10 +363,19 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
         print(f"    ---> No significant Track-vs-PB difference.")
 
     # --- LRT c: condition:mapping interaction (key test) ---
-    formula_no_cond_group = "response ~ condition + mapping + expertise * half + condition:expertise + condition:half + mapping:expertise + mapping:half + expertise:half"
-    model_no_cg = smf.mixedlm(
+    # Build reduced model by stripping condition:mapping AND all higher-order
+    # terms that contain it (condition:mapping:expertise, condition:mapping:half,
+    # condition:mapping:expertise:half).  All other terms stay.
+    formula_no_cond_group = (
+        "response ~ condition + mapping + expertise + half + "
+        "condition:expertise + condition:half + "
+        "mapping:expertise + mapping:half + "
+        "expertise:half + "
+        "condition:expertise:half + mapping:expertise:half"
+    )
         formula_no_cond_group, df_lmm, groups=df_lmm["neuron_id"],
-        re_formula=re_formula_lrt
+        re_formula=re_formula_lrt,
+        vc_formula={"session_id": "0 + C(session_id)"}
     ).fit(reml=False)
 
     lr_stat_cg = 2 * max(0, result2_ml.llf - model_no_cg.llf)
@@ -422,7 +436,7 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
         pb_vals    = subset['Playback'].values
         diff_vals  = pb_vals - track_vals
 
-        t_stat, p_val = ttest_ind(pb_vals, track_vals, equal_var=False)
+        t_stat, p_val = ttest_1samp(diff_vals, 0)
         posthoc_results.append({
             'contrast': f"{mapping_val[:3]} {exp} {half}",
             'track_mean': np.mean(track_vals),
@@ -550,10 +564,10 @@ def compare_random_effect_structures(df_lmm, formula="response ~ condition * map
 
     results_list = []
 
-    # Model 0: Fixed effects only (OLS via MixedLM with free variance)
-    print("\n  Fitting: Fixed effects only ...")
-    m0 = smf.mixedlm(formula, df_lmm, groups=df_lmm["neuron_id"])
-    r0 = m0.fit(reml=False)
+    # Model 0: Fixed effects only (true OLS, no random effects)
+    print("\n  Fitting: Fixed effects only (OLS) ...")
+    m0 = smf.ols(formula, df_lmm)
+    r0 = m0.fit()
 
     # Model 1: Random intercept (default)
     print("  Fitting: Random Intercept ...")
@@ -584,7 +598,11 @@ def compare_random_effect_structures(df_lmm, formula="response ~ condition * map
 
     prev = None
     for name, res in models:
-        n_params = len(res.fe_params) + res.cov_re.shape[0] + 1  # +1 for residual
+        # Handle both OLS (params) and MixedLM (fe_params + cov_re)
+        if hasattr(res, 'fe_params'):
+            n_params = len(res.fe_params) + res.cov_re.shape[0] + 1  # MixedLM: fixed + random + residual
+        else:
+            n_params = len(res.params) + 1  # OLS: params + residual
         aic = -2 * res.llf + 2 * n_params
         bic = -2 * res.llf + np.log(len(df_lmm)) * n_params
         if prev is None:

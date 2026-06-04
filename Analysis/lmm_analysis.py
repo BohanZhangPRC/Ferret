@@ -373,6 +373,7 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
         "expertise:half + "
         "condition:expertise:half + mapping:expertise:half"
     )
+    model_no_cg = smf.mixedlm(
         formula_no_cond_group, df_lmm, groups=df_lmm["neuron_id"],
         re_formula=re_formula_lrt,
         vc_formula={"session_id": "0 + C(session_id)"}

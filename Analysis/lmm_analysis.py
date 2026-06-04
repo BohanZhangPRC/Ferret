@@ -288,21 +288,24 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
     # --- Determine random-effects structure for LRT ---
     # Critical: full and reduced models MUST share the same random effects
     # for the LRT chi2 distribution to be valid.
-    # Strategy: try full model with session VC; if singular, drop from ALL models.
+    # Strategy: probe the most constrained reduced model with session VC;
+    # if singular, drop VC from ALL models (full + reduced) and refit.
     re_formula_lrt = "~ condition" if used_random_slope else None
     vc_lrt = {"session_id": "0 + C(session_id)"}
     use_session_vc = True
 
+    # Use the reduced model (fewer params = more likely to expose singularity)
+    formula_probe = "response ~ mapping * expertise * half"
     try:
-        _test_full = smf.mixedlm(
-            formula_full, df_lmm, groups=df_lmm["neuron_id"],
+        _test = smf.mixedlm(
+            formula_probe, df_lmm, groups=df_lmm["neuron_id"],
             re_formula=re_formula_lrt, vc_formula=vc_lrt
         ).fit(reml=False)
-        del _test_full
+        del _test
     except (np.linalg.LinAlgError, Exception):
         use_session_vc = False
         vc_lrt = None
-        print("  Session VC singular in full model; dropping from ALL LRT models for valid nesting.")
+        print("  Session VC singular; dropping from ALL LRT models for valid nesting.")
 
     # Fit full models for LRT (ML estimation)
     vc_lrt = {"session_id": "0 + C(session_id)"} if use_session_vc else None

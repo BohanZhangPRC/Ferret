@@ -285,29 +285,24 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
     # Refit with ML for Likelihood Ratio Tests
     print("\n-- Refitting with ML for LRT --")
 
-    # --- Detect usable VC structure for LRT ---
-    # If session_id variance is singular / near-zero, remove it from ALL LRT
-    # models (full + reduced) so they remain properly nested.
-    use_session_vc = True
+    # --- Determine random-effects structure for LRT ---
+    # Critical: full and reduced models MUST share the same random effects
+    # for the LRT chi2 distribution to be valid.
+    # Strategy: try full model with session VC; if singular, drop from ALL models.
     re_formula_lrt = "~ condition" if used_random_slope else None
+    vc_lrt = {"session_id": "0 + C(session_id)"}
+    use_session_vc = True
 
-    # Probe: can we fit with session VC?
     try:
-        probe = smf.mixedlm(
+        _test_full = smf.mixedlm(
             formula_full, df_lmm, groups=df_lmm["neuron_id"],
-            re_formula=re_formula_lrt,
-            vc_formula={"session_id": "0 + C(session_id)"}
+            re_formula=re_formula_lrt, vc_formula=vc_lrt
         ).fit(reml=False)
-        # Check if any variance component is effectively zero
-        probe_var = probe.cov_re
-        if hasattr(probe_var, 'values'):
-            if np.any(np.diag(probe_var.values) < 1e-12):
-                use_session_vc = False
-                print("  Session_id VC is near-zero; dropping from ALL LRT models for valid nesting.")
-        del probe
+        del _test_full
     except (np.linalg.LinAlgError, Exception):
         use_session_vc = False
-        print("  Session_id VC is singular; dropping from ALL LRT models for valid nesting.")
+        vc_lrt = None
+        print("  Session VC singular in full model; dropping from ALL LRT models for valid nesting.")
 
     # Fit full models for LRT (ML estimation)
     vc_lrt = {"session_id": "0 + C(session_id)"} if use_session_vc else None
@@ -392,10 +387,12 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
         print(f"    ---> No significant Track-vs-PB difference.")
 
     # --- LRT c: condition:mapping interaction (key test) ---
-    # Strip condition:mapping AND all higher-order terms containing it.
-    # Built programmatically to ensure proper nesting with full formula.
-    _full_terms = set(formula_full.replace("response ~ ", "").split(" * "))
-    # Build reduced: keep all main effects + interactions not involving condition:mapping
+    # Full formula: condition * mapping * expertise * half  (16 terms total)
+    # Reduced:     remove  condition:mapping                     (2-way)
+    #               remove  condition:mapping:expertise          (3-way)
+    #               remove  condition:mapping:half               (3-way)
+    #               remove  condition:mapping:expertise:half     (4-way)
+    # Keep all other main effects, 2-way, 3-way terms unchanged.
     _reduced_parts = ["condition", "mapping", "expertise", "half",
                       "condition:expertise", "condition:half",
                       "mapping:expertise", "mapping:half",
@@ -409,8 +406,14 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
         vc_formula=vc_lrt
     ).fit(reml=False)
 
-    lr_stat_cg = 2 * max(0, result2_ml.llf - model_no_cg.llf)
+    # Verify proper nesting: full model should have exactly 4 more fixed-effect
+    # parameters than reduced (the 4 terms listed above that were removed).
     df_cg = len(result2_ml.fe_params) - len(model_no_cg.fe_params)
+    if df_cg != 4:
+        print(f"  WARNING: expected 4 extra params in full model, got {df_cg}. "
+              f"LRT df may be wrong — check for dropped levels / collinearity.")
+
+    lr_stat_cg = 2 * max(0, result2_ml.llf - model_no_cg.llf)
     p_cg = chi2.sf(lr_stat_cg, df_cg)
 
     print(f"\n  {'condition:mapping interaction':<50} {lr_stat_cg:10.4f} {df_cg:4d} {p_cg:10.6f}")

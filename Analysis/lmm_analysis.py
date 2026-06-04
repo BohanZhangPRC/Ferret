@@ -284,14 +284,45 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
 
     # Refit with ML for Likelihood Ratio Tests
     print("\n-- Refitting with ML for LRT --")
-    result1_ml = smf.mixedlm(formula_full, df_lmm, groups=df_lmm["neuron_id"],
-                             vc_formula={"session_id": "0 + C(session_id)"}).fit(reml=False)
+
+    # --- Detect usable VC structure for LRT ---
+    # If session_id variance is singular / near-zero, remove it from ALL LRT
+    # models (full + reduced) so they remain properly nested.
+    use_session_vc = True
+    re_formula_lrt = "~ condition" if used_random_slope else None
+
+    # Probe: can we fit with session VC?
+    try:
+        probe = smf.mixedlm(
+            formula_full, df_lmm, groups=df_lmm["neuron_id"],
+            re_formula=re_formula_lrt,
+            vc_formula={"session_id": "0 + C(session_id)"}
+        ).fit(reml=False)
+        # Check if any variance component is effectively zero
+        probe_var = probe.cov_re
+        if hasattr(probe_var, 'values'):
+            if np.any(np.diag(probe_var.values) < 1e-12):
+                use_session_vc = False
+                print("  Session_id VC is near-zero; dropping from ALL LRT models for valid nesting.")
+        del probe
+    except (np.linalg.LinAlgError, Exception):
+        use_session_vc = False
+        print("  Session_id VC is singular; dropping from ALL LRT models for valid nesting.")
+
+    # Fit full models for LRT (ML estimation)
+    vc_lrt = {"session_id": "0 + C(session_id)"} if use_session_vc else None
+
+    result1_ml = smf.mixedlm(
+        formula_full, df_lmm, groups=df_lmm["neuron_id"],
+        vc_formula=vc_lrt
+    ).fit(reml=False)
     print(f"  Model 1 (ML): LL = {result1_ml.llf:.2f}")
+
     if used_random_slope:
         result2_ml = smf.mixedlm(
             formula_full, df_lmm, groups=df_lmm["neuron_id"],
             re_formula="~ condition",
-            vc_formula={"session_id": "0 + C(session_id)"}
+            vc_formula=vc_lrt
         ).fit(reml=False)
         print(f"  Model 2 (ML): LL = {result2_ml.llf:.2f}")
     else:
@@ -320,13 +351,11 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
             print(f"  {name:<50s}: coef={coef:+.6f}, p={p:.6f}  {stars}")
 
     # ==========================================================
-    # LIKELIHOOD RATIO TESTS
+    # LIKELIHOOD RATIO TESTS  (all use same VC structure)
     # ==========================================================
     print("\n" + "=" * 65)
     print("  LIKELIHOOD RATIO TESTS")
     print("=" * 65)
-
-    re_formula_lrt = "~ condition" if used_random_slope else None
 
     # --- LRT a: Random slope significance ---
     print(f"\n  {'Test':<50} {'LRT stat':>10} {'df':>4} {'p-value':>10}")
@@ -344,18 +373,11 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
 
     # --- LRT b: condition main effect (Track vs PB) ---
     formula_no_cond = "response ~ mapping * expertise * half"
-    try:
-        model_no_cond = smf.mixedlm(
-            formula_no_cond, df_lmm, groups=df_lmm["neuron_id"],
-            re_formula=re_formula_lrt,
-            vc_formula={"session_id": "0 + C(session_id)"}
-        ).fit(reml=False)
-    except np.linalg.LinAlgError:
-        print("    (session_id VC singular in reduced model; retrying without it)")
-        model_no_cond = smf.mixedlm(
-            formula_no_cond, df_lmm, groups=df_lmm["neuron_id"],
-            re_formula=re_formula_lrt
-        ).fit(reml=False)
+    model_no_cond = smf.mixedlm(
+        formula_no_cond, df_lmm, groups=df_lmm["neuron_id"],
+        re_formula=re_formula_lrt,
+        vc_formula=vc_lrt
+    ).fit(reml=False)
 
     lr_stat_cond = 2 * max(0, result2_ml.llf - model_no_cond.llf)
     df_cond = len(result2_ml.fe_params) - len(model_no_cond.fe_params)
@@ -370,29 +392,22 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
         print(f"    ---> No significant Track-vs-PB difference.")
 
     # --- LRT c: condition:mapping interaction (key test) ---
-    # Build reduced model by stripping condition:mapping AND all higher-order
-    # terms that contain it (condition:mapping:expertise, condition:mapping:half,
-    # condition:mapping:expertise:half).  All other terms stay.
-    formula_no_cond_group = (
-        "response ~ condition + mapping + expertise + half + "
-        "condition:expertise + condition:half + "
-        "mapping:expertise + mapping:half + "
-        "expertise:half + "
-        "condition:expertise:half + mapping:expertise:half"
-    )
+    # Strip condition:mapping AND all higher-order terms containing it.
+    # Built programmatically to ensure proper nesting with full formula.
+    _full_terms = set(formula_full.replace("response ~ ", "").split(" * "))
+    # Build reduced: keep all main effects + interactions not involving condition:mapping
+    _reduced_parts = ["condition", "mapping", "expertise", "half",
+                      "condition:expertise", "condition:half",
+                      "mapping:expertise", "mapping:half",
+                      "expertise:half",
+                      "condition:expertise:half", "mapping:expertise:half"]
+    formula_no_cond_group = "response ~ " + " + ".join(_reduced_parts)
+
     model_no_cg = smf.mixedlm(
         formula_no_cond_group, df_lmm, groups=df_lmm["neuron_id"],
         re_formula=re_formula_lrt,
-        vc_formula={"session_id": "0 + C(session_id)"}
-    )
-    try:
-        model_no_cg = model_no_cg.fit(reml=False)
-    except np.linalg.LinAlgError:
-        print("    (session_id VC singular in reduced model; retrying without it)")
-        model_no_cg = smf.mixedlm(
-            formula_no_cond_group, df_lmm, groups=df_lmm["neuron_id"],
-            re_formula=re_formula_lrt
-        ).fit(reml=False)
+        vc_formula=vc_lrt
+    ).fit(reml=False)
 
     lr_stat_cg = 2 * max(0, result2_ml.llf - model_no_cg.llf)
     df_cg = len(result2_ml.fe_params) - len(model_no_cg.fe_params)

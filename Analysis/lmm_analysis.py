@@ -344,11 +344,18 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
 
     # --- LRT b: condition main effect (Track vs PB) ---
     formula_no_cond = "response ~ mapping * expertise * half"
-    model_no_cond = smf.mixedlm(
-        formula_no_cond, df_lmm, groups=df_lmm["neuron_id"],
-        re_formula=re_formula_lrt,
-        vc_formula={"session_id": "0 + C(session_id)"}
-    ).fit(reml=False)
+    try:
+        model_no_cond = smf.mixedlm(
+            formula_no_cond, df_lmm, groups=df_lmm["neuron_id"],
+            re_formula=re_formula_lrt,
+            vc_formula={"session_id": "0 + C(session_id)"}
+        ).fit(reml=False)
+    except np.linalg.LinAlgError:
+        print("    (session_id VC singular in reduced model; retrying without it)")
+        model_no_cond = smf.mixedlm(
+            formula_no_cond, df_lmm, groups=df_lmm["neuron_id"],
+            re_formula=re_formula_lrt
+        ).fit(reml=False)
 
     lr_stat_cond = 2 * max(0, result2_ml.llf - model_no_cond.llf)
     df_cond = len(result2_ml.fe_params) - len(model_no_cond.fe_params)
@@ -377,7 +384,15 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
         formula_no_cond_group, df_lmm, groups=df_lmm["neuron_id"],
         re_formula=re_formula_lrt,
         vc_formula={"session_id": "0 + C(session_id)"}
-    ).fit(reml=False)
+    )
+    try:
+        model_no_cg = model_no_cg.fit(reml=False)
+    except np.linalg.LinAlgError:
+        print("    (session_id VC singular in reduced model; retrying without it)")
+        model_no_cg = smf.mixedlm(
+            formula_no_cond_group, df_lmm, groups=df_lmm["neuron_id"],
+            re_formula=re_formula_lrt
+        ).fit(reml=False)
 
     lr_stat_cg = 2 * max(0, result2_ml.llf - model_no_cg.llf)
     df_cg = len(result2_ml.fe_params) - len(model_no_cg.fe_params)

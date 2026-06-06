@@ -27,37 +27,100 @@ $$
 - **$J_{\mathrm{skew}}$**: The skew-symmetric (rotational) component of the fitted generator — responsible for rotating the neural state in response to the behavioral drive.
 - **$L$**: An unconstrained linear "leak" term that captures baseline decay, drift, or restoring forces independent of the behavioral drive. It handles the natural dynamics of the neural system when $x(t) = 0$.
 
-**How the fitting works (OLS):**
+**How the fitting works (OLS) — step by step:**
 
-The target variable is the empirical derivative of the neural state, computed via discrete gradient:
+#### Step 1: Compute the target (dependent variable)
 
-```python
-dr_dt = np.gradient(r, dt, axis=0)
-```
-
-The predictors are two design matrices:
-- **Rotation term:** $R(t) \cdot x(t)$ — the neural state gated by the behavioral drive
-- **Leak term:** $R(t)$ — the neural state alone
-
-OLS simultaneously fits both:
+The derivative of the neural state is estimated via discrete finite differences:
 
 ```python
-U = np.hstack([r * x_dot[:, None], r])   # [rotation predictor, leak predictor]
-weights, _, _, _ = np.linalg.lstsq(U, dr_dt, rcond=None)
+dr_dt = np.gradient(r, dt, axis=0)   # shape (T, N)
+# dr_dt[t, j] ≈ (R[t+1, j] - R[t-1, j]) / (2 * dt)
 ```
 
-From the fitted weights:
-- **$J_{\mathrm{ols}}$** = `weights[:, :N]` — the raw (unconstrained) generator matrix
-- **$J_{\mathrm{skew}}$** = `0.5 * (J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)` — the skew-symmetric component, which isolates pure rotation
-- **$L$** = `weights[:, N:]` — the leak matrix
+This is what the model must predict — how each neuron's activity changes from one moment to the next.
 
-The model prediction is:
+#### Step 2: Build the design matrix (independent variables)
+
+The model equation $dR/dt = J \cdot (R \cdot x) + L \cdot R$ says the derivative at time $t$ depends on two things:
+- **$R \cdot x$** — the neural state at time $t$, gated (multiplied) by the behavioral drive at time $t$
+- **$R$** — the neural state at time $t$, acting autonomously
+
+These become the two predictor blocks, stacked side-by-side:
 
 ```python
-dR_pred = (r * x_dot[:, None]) @ J_skew.T + r @ L.T
+U_rot = r * x_dot[:, None]      # (T, N): each column = r[:, j] * x_dot
+U     = np.hstack([U_rot, r])   # (T, 2N): rotation block + leak block
 ```
 
-A PyTorch variant (`_fit_lie_pytorch`) performs constrained optimization where `J_skew = W - W^T` is enforced during gradient descent rather than post-hoc, but it is functionally equivalent for the metrics.
+Visually, one row of the design matrix `U` (a single timepoint $t$) looks like:
+
+```
+Column indices:    0        1        ...   N-1    |    N     N+1    ...   2N-1
+                 ───────── rotation features ─────   ───────── leak features ─────────
+
+U[t, :]  =  [ r[t,0]·x[t]  r[t,1]·x[t]  ...  r[t,N-1]·x[t]  |  r[t,0]  r[t,1]  ...  r[t,N-1] ]
+```
+
+The first $N$ columns ask: "how does each neuron's activity, weighted by the current velocity, predict the derivative?" The second $N$ columns ask: "how does each neuron's unweighted activity predict the derivative?"
+
+#### Step 3: Solve the multi-output linear system
+
+```python
+weights, residuals, rank, singular_values = np.linalg.lstsq(U, dr_dt, rcond=None)
+# weights: (2N, N)  — the full solution matrix
+# We ignore residuals, rank, and singular_values (not needed for metrics)
+```
+
+`lstsq` solves $U \cdot W = dr\_dt$ for $W$, minimizing the sum of squared residuals across **all $N$ target neurons simultaneously**. Each of the $N$ columns of `dr_dt` is a separate regression target, and each of the $2N$ columns of `U` is a separate predictor. The result `weights` is a $(2N \times N)$ matrix — it tells you how to combine the $2N$ predictors to best predict each of the $N$ targets.
+
+Equivalent formulation — for each target neuron $j$ (column of `dr_dt`), `lstsq` finds the $2N$ coefficients in `weights[:, j]` that minimize:
+
+$$ \sum_t \left( dr\_dt[t, j] - \sum_{k=0}^{N-1} J_{k,j} \cdot r[t,k] \cdot x[t] - \sum_{k=0}^{N-1} L_{k,j} \cdot r[t,k] \right)^2 $$
+
+This is **not $N$ separate scalar regressions** — `lstsq` solves all $N$ target columns in a single matrix operation, leveraging any shared structure across the predictor matrix $U$.
+
+#### Step 4: Extract the generator and leak matrices
+
+```python
+N = r.shape[1]                     # number of neurons / embedding dimensions
+
+J_ols  = weights[:N, :]            # (N, N) — first N rows = rotation generator
+J_skew = 0.5 * (J_ols - J_ols.T)   # (N, N) — skew-symmetric (purely rotational) component
+L      = weights[N:, :]            # (N, N) — remaining N rows = leak matrix
+```
+
+**Why the skew-symmetrization?** Any real square matrix can be uniquely decomposed into a symmetric part and a skew-symmetric part:
+
+$$ J_{\mathrm{ols}} = \underbrace{\frac{1}{2}(J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)}_{\text{skew-symmetric (rotation)}} + \underbrace{\frac{1}{2}(J_{\mathrm{ols}} + J_{\mathrm{ols}}^T)}_{\text{symmetric (scaling/dissipation)}} $$
+
+The skew-symmetric part $J_{\mathrm{skew}}$ satisfies $J_{\mathrm{skew}}^T = -J_{\mathrm{skew}}$. Its diagonal is always zero (a neuron does not rotationally drive *itself*), and each off-diagonal pair encodes a rotational coupling: $J_{\mathrm{skew}}[i,j] = -J_{\mathrm{skew}}[j,i]$ means neurons $i$ and $j$ form part of a rotational plane. The symmetric part is discarded because it represents scaling, stretching, or pure dissipation — not rotation.
+
+$L$ captures the autonomous dynamics: it tells you how the neural state evolves on its own, independent of the behavioral drive $x(t)$.
+
+#### Step 5: Reconstruct the prediction and compute metrics
+
+```python
+# Prediction from the full model (rotation + leak)
+dR_pred = (r * x_dot[:, None]) @ J_skew.T + r @ L.T   # (T, N)
+
+# Residuals and total variance
+ss_res = np.sum((dr_dt - dR_pred) ** 2)                # sum of squared residuals
+ss_tot = np.sum((dr_dt - np.mean(dr_dt, axis=0)) ** 2) # total sum of squares
+
+# Total R²
+r2 = 1 - ss_res / ss_tot
+
+# Drive-specific R² (over leak-only baseline)
+dR_leak = r @ L.T                                      # prediction from L alone
+ss_leak = np.sum((dr_dt - dR_leak) ** 2)
+r2_drive = 1 - ss_res / ss_leak
+
+# Skewness ratio
+sr = np.linalg.norm(J_skew) / np.linalg.norm(J_ols)
+```
+
+The OLS variant (`LIE_METHOD = "lstsq"`) and the PyTorch variant (`"pytorch"`) differ only in how $J_{\mathrm{skew}}$ and $L$ are obtained (post-hoc skew-symmetrization vs. constrained gradient descent with $J = W - W^T$). Both produce functionally equivalent $J_{\mathrm{skew}}$, SR, R², and R²_drive metrics. The current pipeline uses `"lstsq"` by default for speed and reproducibility.
 
 ---
 

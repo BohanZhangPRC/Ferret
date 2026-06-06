@@ -14,7 +14,7 @@ A functional forward model, if implemented by the neural circuitry studied here,
 
 The mathematical framework below asks whether these two operations have identifiable geometric signatures (eigenvalue |Real| as candidate dissipation / sensory attenuation; eigenvalue |Imag| as candidate rotation / predictive updating). These geometric-to-biological mappings are **hypotheses to be tested**, not confirmed facts. None of the computed metrics constitute a direct test of predictive updating or sensory attenuation — they characterize the geometry of behaviorally-aligned neural trajectories, whose mechanistic interpretation requires independent validation.
 
-**Behavioral context:** In the closed-loop sensorimotor paradigm used here (cf. Shamma et al., 2021+, on active sensing and sensorimotor interactions), the auditory cortex is not a passive feature extractor — it is an active hub dynamically reshaped by motor feedback. **Schneider & Mooney (2018, *Annu. Rev. Neurosci.*)** reviewed the converging evidence that motor-related signals globally modulate auditory cortical processing across species, establishing the biological plausibility of motor-to-auditory transformations as a general principle. Complementary engineering models such as **MirrorNet** (which learns audio synthesizer controls inspired by sensorimotor interaction) demonstrate that closed-loop motor-auditory architectures can self-organize structured internal representations. The contrast between Tracking and Playback conditions is therefore not merely a control for attention or arousal; it is a direct test of whether the motor-to-sensory transformation operates as a structured geometric operation (Lie group rotation) rather than unstructured gain modulation.
+**Behavioral context:** In the closed-loop sensorimotor paradigm used here (cf. Shamma et al., 2021+, on active sensing and sensorimotor interactions), the auditory cortex is not a passive feature extractor — it is an active hub dynamically reshaped by motor feedback. **Schneider & Mooney (2018, *Annu. Rev. Neurosci.*)** reviewed the converging evidence that motor-related signals globally modulate auditory cortical processing across species, establishing the biological plausibility of motor-to-auditory transformations as a general principle. Complementary engineering models such as **MirrorNet** (which learns audio synthesizer controls inspired by sensorimotor interaction) demonstrate that closed-loop motor-auditory architectures can self-organize structured internal representations. The contrast between Tracking and Playback conditions therefore provides a behavioral assay for comparing neural dynamics under active motor control vs. passive sensory replay — a comparison that *motivates* (but does not by itself confirm) the geometric interpretation of the motor-to-sensory transformation as a structured rotation rather than unstructured gain modulation.
 
 ---
 
@@ -114,7 +114,7 @@ The crucial structural constraint is that $J_{\mathrm{skew}}$ is **skew-symmetri
 | **Generator $J$** | The steering column — converts hand torque ($x$) into wheel rotation | How neural circuits convert head velocity into a structured rotation of the population state |
 | **Skew-symmetry** | A steering wheel turns left and right symmetrically — turning left by $\theta$ and then right by $\theta$ returns you to the start | $J_{\mathrm{skew}}^T = -J_{\mathrm{skew}}$ ensures the rotation is *reversible*: forward and backward movements cancel |
 | **Leak $L$** | Friction in the steering column — the wheel slowly returns to center if you let go | Passive decay of neural activity back toward baseline |
-| **SR ≈ 1** | The steering column is well-lubricated: your hand movement goes almost entirely into rotation | The behavioral drive is efficiently coupled to rotational neural dynamics |
+| **SR ≈ 1** | The steering column's geometry is purely rotational — force applied to it produces rotation, not compression | The generator $J$ is dominated by its skew-symmetric (rotational) component — the *shape* of the drive-to-dynamics mapping is rotational. *(Note: this does not imply the drive efficiently predicts $dR/dt$ — see $R^2_{\mathrm{drive}}$ and §12.7.)* |
 | **SR ≈ 0** | The steering column is rusty: most force goes into friction and vibration instead of rotation | The drive mostly produces non-rotational drift or noise |
 
 #### 6. Why not just use PCA or a generic linear model?
@@ -234,7 +234,7 @@ $$
 \mathrm{SR} = \frac{\|J_{\mathrm{skew}}\|}{\|J_{\mathrm{ols}}\|}
 $$
 
-Measures what fraction of the fitted generator is purely rotational (skew-symmetric). SR ≈ 1 means the behavioral drive primarily rotates the neural manifold; SR ≈ 0 means it primarily scales or dissipates the state.
+Measures what fraction of the fitted generator is purely rotational (skew-symmetric). High SR indicates that the skew-symmetric component dominates the norm of $J_{\mathrm{ols}}$. **Coordinate-dependence caveat:** the skew/symmetric decomposition is only physically meaningful as "rotation vs. stretch" under an isotropic metric; CEBRA coordinates are not guaranteed to satisfy this condition (see §12.1). Interpret SR as a useful but coordinate-frame-dependent descriptor, not a frame-invariant geometric invariant.
 
 ### B. Total R²
 
@@ -309,7 +309,7 @@ When using CEBRA embeddings (Sections 1.3–1.4 in the analysis notebook):
 
 3. **Metrics are averaged across epochs** within each session-condition to produce a single value per session.
 
-4. **Time-shuffled control:** For each epoch, the behavioral labels are randomly permuted 10 times (`N_SHUFFLES = 10`), and the Lie algebra is re-fit on each permutation (same CEBRA embedding, shuffled labels). The CEBRA model is **not** retrained — the embedding stays fixed, and only the OLS Lie algebra fit is repeated. This is the critical design choice: it tests whether the *temporal alignment* between the behavioral variable and the neural state matters, without confounding from re-embedding. The shuffle metrics (`SR_shuffle`, `R2_shuffle`, `R2_drive_shuffle`) are averaged across the 10 realizations to reduce baseline noise.
+4. **Time-shuffled control:** For each epoch, the behavioral labels are randomly permuted 10 times (`N_SHUFFLES = 10`), and the Lie algebra is re-fit on each permutation (same CEBRA embedding, shuffled labels). The CEBRA model is **not** retrained — the embedding stays fixed, and only the OLS Lie algebra fit is repeated. This is the critical design choice: it tests whether the *temporal alignment* between the behavioral variable and the neural state matters, without confounding from re-embedding. The shuffle metrics (`SR_shuffle`, `R2_shuffle`, `R2_drive_shuffle`) are averaged across the 10 realizations for exploratory noise reduction. **Caveats:** the current shuffle implementation uses independent permutation (which destroys the autocorrelation structure of $x(t)$) and $N_{\mathrm{SHUFFLES}} = 10$ provides insufficient statistical power for formal permutation-based inference; see §12.3 and §12.4 for limitations and planned upgrades.
 
 5. **R² gate:** A session-condition is considered to have meaningful rotational structure only if $R^2_{\mathrm{true}} > R^2_{\mathrm{shuffle}}$ (total R²) **and** $R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, shuffle}}$ (drive-specific R²). **The drive-specific gate ($R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, shuffle}}$) is the primary validation criterion.** In low-dimensional embeddings (e.g., 3D CEBRA), the leak term $L \cdot R$ dominates the total R², making the total R² gate weak and potentially misleading. The $R^2_{\mathrm{drive}}$ gate isolates the behavioral drive contribution and is the stricter, more interpretable threshold: it directly answers whether the time-aligned motor command explains additional derivative variance beyond what the autonomous leak dynamics already capture.
 
@@ -356,7 +356,7 @@ where:
 - $u_k(t)$ are multiple behavioral inputs (velocity, acceleration, position, error, etc.)
 - Each $A_k$ is independently decomposable into skew-symmetric ($J_k$) and symmetric ($S_k$) components: $A_k = J_k + S_k$
 
-This framework generalizes the single-drive Lie algebra model to a **multi-channel behavioral gating system** while preserving the core geometric structure: each $A_k$ has its own SR, eigenvalue spectrum, and can be tested for rotational dominance independently. It connects to the modern literature on **adaptive unitary state-space models** (cf. NeurIPS 2025 unitary SSM lineage) and continuous-time bilinear recurrent neural networks, positioning the current 1D-drive model as the minimal interpretable case within a broader class of structured sensorimotor dynamics models.
+This framework generalizes the single-drive Lie algebra model to a **multi-channel behavioral gating system** while preserving the core geometric structure: each $A_k$ has its own SR, eigenvalue spectrum, and can be tested for rotational dominance independently. It connects to the modern literature on **structured state-space models** (e.g., Gu & Dao, 2023, Mamba; Orvieto et al., 2023, Linear Recurrent Units) and continuous-time bilinear recurrent neural networks, positioning the current 1D-drive model as the minimal interpretable case within a broader class of structured sensorimotor dynamics models.
 
 ---
 
@@ -399,7 +399,7 @@ This is **not a bug** — it is a direct consequence of the model design. The to
 
 ### Why 10 shuffles per epoch
 
-A single shuffle is one random pairing of labels and neural states, and can be "lucky" or "unlucky" — producing a shuffle SR that is accidentally high or low due to sampling noise. Averaging across 10 independent permutations reduces the baseline variance by a factor of ~10 and gives a stable estimate of the null distribution.
+A single shuffle is one random pairing of labels and neural states, and can be "lucky" or "unlucky" — producing a shuffle SR that is accidentally high or low due to sampling noise. Averaging across 10 independent permutations provides exploratory noise reduction. **Important caveat:** $N_{\mathrm{SHUFFLES}} = 10$ is insufficient for formal permutation-based inference (minimum resolvable $p \approx 0.09$); see §12.4 for the statistical limitations and required upgrades for publication-level hypothesis testing.
 
 ### The strongest negative control: Shuffle-Label CEBRA
 
@@ -481,7 +481,7 @@ $$ L_{\mathrm{CEBRA}} = -\log \frac{\exp(\mathrm{sim}(z_i, z_i^+))}{\sum_j \exp(
 - **Positive pairs** (nearby timepoints or same behavioral context) are pulled together
 - **Negative pairs** (distant timepoints or different behavioral context) are pushed apart
 
-The behavioral variable (velocity, position) **drives the training**. CEBRA nonlinearly reshapes the embedding to extract structure relevant to that variable — even if the relevant signal has tiny raw variance (e.g., raw-space R²_drive ≈ 0.0002). It works like a scalpel: regardless of how weak the tracking signal is in the raw neural code, CEBRA isolates it into a low-dimensional manifold.
+The behavioral variable (velocity, position) **drives the training**. CEBRA nonlinearly reshapes the embedding to extract structure relevant to that variable — even if the relevant signal has tiny raw variance (e.g., raw-space R²_drive ≈ 0.0002). It can extract behaviorally relevant structure even when the tracking signal has low raw variance — isolating the sensorimotor manifold into a low-dimensional embedding that would be distributed across many weakly-modulated neurons in the full neural space.
 
 | | PCA | CEBRA |
 |---|---|---|
@@ -506,7 +506,7 @@ The most fundamental difference between PCA and CEBRA is **whether the algorithm
 
 | | PCA | CEBRA |
 |---|---|---|
-| **What it produces** | A static "variance X-ray" of the brain | A continuous geometric animation guided by behavior |
+| **What it produces** | A static variance-maximizing projection | A behaviorally-aligned latent representation that preserves temporal continuity |
 | **Time** | Ignored — shuffle the data, same result | Essential — defines positive/negative pairs |
 | **What survives** | Whatever has largest amplitude | Whatever has clearest behavioral structure |
 | **Suitable for** | Static population coding analysis | Dynamical systems analysis (Lie algebra, jPCA-like rotation detection, state-space trajectory modeling) |

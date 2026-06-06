@@ -633,3 +633,5 @@ At 12+ dimensions (144 J parameters), the model can fit essentially any structur
 10. **Shenoy, K.V., Sahani, M. and Churchland, M.M.** (2013) 'Cortical control of arm movements: a dynamical systems perspective', *Annual Review of Neuroscience*, 36, pp. 337–359. doi:10.1146/annurev-neuro-062111-150509.
 
 11. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.
+
+12. **Siriwardena, Y.M., Marion, G. and Shamma, S.** (2022) 'The MirrorNet: learning audio synthesizer controls inspired by sensorimotor interaction', *ICASSP 2022 — IEEE International Conference on Acoustics, Speech and Signal Processing*, pp. 946–950. doi:10.1109/ICASSP43922.2022.9747358.

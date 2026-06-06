@@ -27,6 +27,98 @@ $$
 - **$J_{\mathrm{skew}}$**: The skew-symmetric (rotational) component of the fitted generator — responsible for rotating the neural state in response to the behavioral drive.
 - **$L$**: An unconstrained linear "leak" term that captures baseline decay, drift, or restoring forces independent of the behavioral drive. It handles the natural dynamics of the neural system when $x(t) = 0$.
 
+---
+
+### Lie Groups and Lie Algebras — what they are and why they matter here
+
+This section unpacks the terms "Lie group" and "Lie algebra" from first principles so that the connection to neural dynamics becomes concrete and intuitive.
+
+#### The core idea, in one sentence
+
+> A **Lie group** is a smooth curved space of *states*. A **Lie algebra** is the flat tangent space of *velocities* at each point.
+
+Everything that follows is an elaboration of this one sentence, with examples and neural context.
+
+#### 1. What is a Lie group?
+
+A Lie group is a set of transformations that is simultaneously a **smooth manifold** (you can move continuously through it) and a **group** (you can compose and invert transformations).
+
+**Example: rotations in 2D.** The set of all rotation angles $\theta \in [0, 2\pi)$ forms a circle $S^1$. You can rotate from any angle to any other angle continuously (manifold). You can compose two rotations ($\theta_1 + \theta_2$) and invert a rotation ($-\theta$) — this is the group structure. The circle is a 1-dimensional Lie group.
+
+**Example: rotations in 3D.** The set of all 3D rotation matrices forms the Lie group $SO(3)$. It is a 3-dimensional curved space (not a flat 3D volume — it is a projective space where opposite points are identified, like folding a ball in half). Each point on this manifold is a complete orientation.
+
+**In the neural context**, we are asking: *does the neural population state $R(t)$ live on (or near) a Lie group manifold?* If so, the brain is using rotational transformations to encode and update sensory predictions — moving the neural state along a curved manifold in a structured, reversible way rather than pushing it arbitrarily through state space.
+
+#### 2. What is a Lie algebra?
+
+The Lie algebra is the **tangent space** at the identity element of a Lie group. It describes all possible *infinitesimal* transformations — the velocities you can have while staying on the manifold.
+
+**Example: 2D rotations.** The Lie group is the circle of angles $\theta$. The Lie algebra is the tangent line at $\theta = 0$ — it has one dimension (angular velocity $\omega = d\theta/dt$). Any rotation can be reached by integrating constant angular velocity: $\theta(t) = \theta(0) + \omega \cdot t$.
+
+**Example: 3D rotations.** The Lie algebra $\mathfrak{so}(3)$ is the set of all $3 \times 3$ **skew-symmetric** matrices (matrices satisfying $M^T = -M$). Any such matrix has the form:
+
+$$
+M = \begin{bmatrix} 0 & -c & b \\ c & 0 & -a \\ -b & a & 0 \end{bmatrix}
+$$
+
+This matrix has exactly 3 independent parameters $(a, b, c)$ — matching the 3 degrees of freedom of 3D rotation (pitch, yaw, roll). The action of this matrix on a vector $\mathbf{v}$ produces $\mathbf{v} \times (a, b, c)$ — the cross product, which rotates $\mathbf{v}$ around the axis $(a, b, c)$ at angular speed $\|(a, b, c)\|$.
+
+**The defining property of a Lie algebra is the commutator (Lie bracket):**
+
+$$ [A, B] = AB - BA $$
+
+This measures how much two transformations fail to commute — how much the result depends on the order in which you apply them. For skew-symmetric matrices, $[A, B]$ is also skew-symmetric. The Lie bracket captures the non-commutative geometry of the manifold.
+
+#### 3. How they connect: exponential map
+
+The bridge from Lie algebra to Lie group is the **matrix exponential**:
+
+$$ R(\theta) = \exp(\theta \cdot M) = I + \theta M + \frac{\theta^2}{2!} M^2 + \cdots $$
+
+- The Lie algebra element $M$ (an infinitesimal rotation) is exponentiated to produce a finite rotation $R(\theta)$ on the Lie group.
+- Conversely, the Lie algebra can be recovered by taking the derivative at $\theta = 0$: $M = \left.\frac{dR}{d\theta}\right|_{\theta=0}$.
+
+This is exactly the relationship between position and velocity in physics: integrate velocity (Lie algebra) to get position (Lie group); differentiate position to get velocity. The key difference is that on a curved manifold, the velocity at each point lives in a tangent space that is *tilted* relative to the tangent space at other points — you cannot simply add velocities from different locations.
+
+#### 4. Why this matters for the neural analysis
+
+The model equation $dR/dt = J_{\mathrm{skew}} \cdot R \cdot x(t) + L \cdot R$ can now be read with group-theoretic eyes:
+
+| Term | Mathematical role | Physical meaning |
+|------|------------------|-----------------|
+| $R(t)$ | Point on (or near) a Lie group manifold | Neural population state at time $t$ |
+| $dR/dt$ | Tangent vector — an element of the Lie algebra | How the neural state is changing right now |
+| $J_{\mathrm{skew}}$ | **Generator** — maps behavioral drive $x(t)$ into the Lie algebra | The "steering matrix": how head velocity translates into neural rotation |
+| $L \cdot R$ | Non-rotational flow (drift, decay, leak) | Autonomous dynamics not driven by behavior |
+
+The crucial structural constraint is that $J_{\mathrm{skew}}$ is **skew-symmetric** ($J^T = -J$). This is not an arbitrary choice:
+
+- Skew-symmetric matrices are exactly the Lie algebra elements of the rotation group $SO(N)$.
+- When $x(t) \neq 0$, the term $J_{\mathrm{skew}} \cdot R \cdot x(t)$ generates a *pure rotation* of the neural state — it moves $R(t)$ along the manifold without changing its norm or stretching the geometry.
+- The matrix exponential $\exp(J_{\mathrm{skew}} \cdot x \cdot \Delta t)$ is a rotation matrix. Integrating this over time traces a curved trajectory on the manifold.
+
+**If $J_{\mathrm{skew}}$ is large (high Skewness Ratio)**, the behavioral drive primarily rotates the neural state — the brain uses a Lie-group-like rotational code for sensorimotor prediction. **If $J_{\mathrm{skew}}$ is small (low SR)**, the drive mostly scales or dissipates the state — closer to a leaky integrator than a rotational transformer.
+
+#### 5. Analogy: a car's steering wheel
+
+| Concept | Car analogy | Neural analogy |
+|---------|------------|----------------|
+| **Lie group** | The angle of the steering wheel (a circle $S^1$) | The neural population state $R(t)$ on its manifold |
+| **Lie algebra** | Angular velocity of the wheel (1 number: $\omega$) | $J_{\mathrm{skew}} \cdot R \cdot x(t)$ — the rotational push from behavior |
+| **Generator $J$** | The steering column — converts hand torque ($x$) into wheel rotation | How neural circuits convert head velocity into a structured rotation of the population state |
+| **Skew-symmetry** | A steering wheel turns left and right symmetrically — turning left by $\theta$ and then right by $\theta$ returns you to the start | $J_{\mathrm{skew}}^T = -J_{\mathrm{skew}}$ ensures the rotation is *reversible*: forward and backward movements cancel |
+| **Leak $L$** | Friction in the steering column — the wheel slowly returns to center if you let go | Passive decay of neural activity back toward baseline |
+| **SR ≈ 1** | The steering column is well-lubricated: your hand movement goes almost entirely into rotation | The behavioral drive is efficiently coupled to rotational neural dynamics |
+| **SR ≈ 0** | The steering column is rusty: most force goes into friction and vibration instead of rotation | The drive mostly produces non-rotational drift or noise |
+
+#### 6. Why not just use PCA or a generic linear model?
+
+A generic linear model $dR/dt = A \cdot R$ would fit *any* matrix $A$ — symmetric, skew-symmetric, or a mix. It would capture rotational dynamics, but it would also fit scaling, shearing, and pure noise with equal enthusiasm. By explicitly decomposing $J_{\mathrm{ols}}$ into its skew-symmetric ($J_{\mathrm{skew}}$) and symmetric components, and computing SR and eigenvalues, we ask a specific structured question: *is the behavioral drive generating a group-like rotation of the neural manifold?*
+
+This is a stronger scientific claim than "the drive modulates neural activity." It asserts that the modulation follows a specific geometric form — a Lie group action — which carries implications for how the brain organizes sensorimotor transformations: as structured, reversible, manifold-preserving operations rather than arbitrary gain modulation.
+
+---
+
 **How the fitting works (OLS) — step by step:**
 
 #### Step 1: Compute the target (dependent variable)

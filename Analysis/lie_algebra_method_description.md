@@ -1,4 +1,4 @@
-# Lie Algebra and Rotational Dynamics for Sensorimotor Integration
+# A Lie Algebra Framework for Characterizing Rotational Dynamics in Sensorimotor Integration: A Pilot Study
 
 This document describes the mathematical foundation, modeling pipeline, and physical interpretation of the Lie Algebra / Rotational Dynamics method used to analyze neural population data in this project.
 
@@ -103,7 +103,7 @@ The crucial structural constraint is that $J_{\mathrm{skew}}$ is **skew-symmetri
 - When $x(t) \neq 0$, the term $J_{\mathrm{skew}} \cdot R \cdot x(t)$ generates a *pure rotation* of the neural state — it moves $R(t)$ along the manifold without changing its norm or stretching the geometry.
 - The matrix exponential $\exp(J_{\mathrm{skew}} \cdot x \cdot \Delta t)$ is a rotation matrix. Integrating this over time traces a curved trajectory on the manifold.
 
-**If $J_{\mathrm{skew}}$ is large (high Skewness Ratio)**, the behavioral drive primarily rotates the neural state — the brain uses a Lie-group-like rotational code for sensorimotor prediction. **If $J_{\mathrm{skew}}$ is small (low SR)**, the drive mostly scales or dissipates the state — closer to a leaky integrator than a rotational transformer.
+**If $J_{\mathrm{skew}}$ is large (high Skewness Ratio)**, the behavioral drive is associated with a primarily rotational transformation of the neural state — consistent with a Lie-group-like geometric code. **If $J_{\mathrm{skew}}$ is small (low SR)**, the drive-to-dynamics mapping is dominated by scaling or dissipation — closer to a leaky integrator than a rotational transformer. (Note the coordinate-dependence caveat in §12.1: SR is not frame-invariant, and high SR alone does not establish that the drive *causes* the rotation — see §12.7.)
 
 #### 5. Analogy: a car's steering wheel
 
@@ -500,7 +500,7 @@ The most fundamental difference between PCA and CEBRA is **whether the algorithm
 
 **Dynamics require time.** The Lie algebra framework is fundamentally temporal: it fits the derivative $dR/dt$ — how the current state transitions to the next state. It asks "does the behavioral drive *cause* the neural state to rotate?" This causal-temporal question cannot be answered in a space built by a time-blind algorithm. The extracted axes must encode not just what the brain is doing *on average*, but how it moves from one state to the next over time.
 
-**CEBRA is time- and behavior-aware.** Its contrastive learning pairs data points based on their **temporal and behavioral proximity**: if time $t$ and $t+1$ share similar velocity/position, their neural states are pulled together in the embedding; if they are behaviorally far apart, they are pushed apart. This means CEBRA's embedding intrinsically encodes the **continuous temporal evolution** of the neural state in relation to behavior. The resulting latent space is not a static snapshot of variance — it is a **continuous geometric movie** of the sensorimotor transformation.
+**CEBRA is time- and behavior-aware.** Its contrastive learning pairs data points based on their **temporal and behavioral proximity**: if time $t$ and $t+1$ share similar velocity/position, their neural states are pulled together in the embedding; if they are behaviorally far apart, they are pushed apart. This means CEBRA's embedding intrinsically encodes the **continuous temporal evolution** of the neural state in relation to behavior. The resulting latent space encodes the time-resolved relationship between neural activity and behavior — a behaviorally-aligned representation of the sensorimotor transformation.
 
 **Analogy:**
 
@@ -757,26 +757,30 @@ where $Q$ is the process noise covariance and $f$ is a learned or fixed observat
 
 3. **Elsayed, G.F. and Cunningham, J.P.** (2017) 'Structure in neural population recordings: an expected byproduct of simpler phenomena?', *Nature Neuroscience*, 20(9), pp. 1310–1318. doi:10.1038/nn.4617.
 
-4. **Keller, G.B. and Mrsic-Flogel, T.D.** (2018) 'Predictive processing: a canonical cortical computation', *Neuron*, 100(2), pp. 424–435. doi:10.1016/j.neuron.2018.10.003.
+4. **Gu, A. and Dao, T.** (2023) 'Mamba: linear-time sequence modeling with selective state spaces', *arXiv preprint*, arXiv:2312.00752.
 
-5. **Kobak, D., Brendel, W., Constantinidis, C., Feierstein, C.E., Kepecs, A., Mainen, Z.F., Qi, X.L., Romo, R., Uchida, N. and Machens, C.K.** (2016) 'Demixed principal component analysis of neural population data', *eLife*, 5, p. e10989. doi:10.7554/eLife.10989.
+5. **Keller, G.B. and Mrsic-Flogel, T.D.** (2018) 'Predictive processing: a canonical cortical computation', *Neuron*, 100(2), pp. 424–435. doi:10.1016/j.neuron.2018.10.003.
 
-6. **Lebedev, M.A., Ossadtchi, A., Mill, N.A., Urpí, N.A., Cervera, M.R. and Nicolelis, M.A.L.** (2019) 'Analysis of neuronal ensemble activity reveals the pitfalls and shortcomings of rotation dynamics', *Scientific Reports*, 9, p. 18978. doi:10.1038/s41598-019-54760-4.
+6. **Kobak, D., Brendel, W., Constantinidis, C., Feierstein, C.E., Kepecs, A., Mainen, Z.F., Qi, X.L., Romo, R., Uchida, N. and Machens, C.K.** (2016) 'Demixed principal component analysis of neural population data', *eLife*, 5, p. e10989. doi:10.7554/eLife.10989.
 
-7. **Nelson, A., Schneider, D.M. and Mooney, R.** (2013) 'A circuit for motor cortical modulation of auditory cortical activity', *Journal of Neuroscience*, 33(36), pp. 14342–14353. doi:10.1523/JNEUROSCI.0935-13.2013.
+7. **Lebedev, M.A., Ossadtchi, A., Mill, N.A., Urpí, N.A., Cervera, M.R. and Nicolelis, M.A.L.** (2019) 'Analysis of neuronal ensemble activity reveals the pitfalls and shortcomings of rotation dynamics', *Scientific Reports*, 9, p. 18978. doi:10.1038/s41598-019-54760-4.
 
-8. **Schneider, D.M. and Mooney, R.** (2018) 'How movement modulates hearing', *Annual Review of Neuroscience*, 41, pp. 553–572. doi:10.1146/annurev-neuro-072116-031215.
+8. **Nelson, A., Schneider, D.M. and Mooney, R.** (2013) 'A circuit for motor cortical modulation of auditory cortical activity', *Journal of Neuroscience*, 33(36), pp. 14342–14353. doi:10.1523/JNEUROSCI.0935-13.2013.
 
-9. **Schneider, D.M., Nelson, A. and Mooney, R.** (2014) 'A synaptic and circuit basis for corollary discharge in the auditory cortex', *Nature*, 513(7517), pp. 189–194. doi:10.1038/nature13724.
+9. **Orvieto, A., Smith, S.L., Gu, A., Fernando, A., Gulcehre, C., Pascanu, R. and De, S.** (2023) 'Resurrecting recurrent neural networks for long sequences', *ICML 2023 — Proceedings of the 40th International Conference on Machine Learning*, PMLR 202, pp. 26670–26698.
 
-10. **Schneider, S., Lee, J.H. and Mathis, M.W.** (2023) 'Learnable latent embeddings for joint behavioural and neural analysis', *Nature*, 617(7960), pp. 360–368. doi:10.1038/s41586-023-06031-6.
+10. **Schneider, D.M. and Mooney, R.** (2018) 'How movement modulates hearing', *Annual Review of Neuroscience*, 41, pp. 553–572. doi:10.1146/annurev-neuro-072116-031215.
 
-11. **Shamma, S., Patel, P., Mukherjee, S., Marion, G., Khalighinejad, B., Han, C., Herrero, J., Bickel, S., Mehta, A. and Mesgarani, N.** (2021) 'Learning speech production and perception through sensorimotor interactions', *Cerebral Cortex Communications*, 2(1), p. tgaa091. doi:10.1093/texcom/tgaa091.
+11. **Schneider, D.M., Nelson, A. and Mooney, R.** (2014) 'A synaptic and circuit basis for corollary discharge in the auditory cortex', *Nature*, 513(7517), pp. 189–194. doi:10.1038/nature13724.
 
-12. **Shenoy, K.V., Sahani, M. and Churchland, M.M.** (2013) 'Cortical control of arm movements: a dynamical systems perspective', *Annual Review of Neuroscience*, 36, pp. 337–359. doi:10.1146/annurev-neuro-062111-150509.
+12. **Schneider, S., Lee, J.H. and Mathis, M.W.** (2023) 'Learnable latent embeddings for joint behavioural and neural analysis', *Nature*, 617(7960), pp. 360–368. doi:10.1038/s41586-023-06031-6.
 
-13. **Shinn, M.** (2023) 'Phantom oscillations in principal component analysis', *Proceedings of the National Academy of Sciences*, 120(48). doi:10.1073/pnas.2311420120.
+13. **Shamma, S., Patel, P., Mukherjee, S., Marion, G., Khalighinejad, B., Han, C., Herrero, J., Bickel, S., Mehta, A. and Mesgarani, N.** (2021) 'Learning speech production and perception through sensorimotor interactions', *Cerebral Cortex Communications*, 2(1), p. tgaa091. doi:10.1093/texcom/tgaa091.
 
-14. **Siriwardena, Y.M., Marion, G. and Shamma, S.** (2022) 'The MirrorNet: learning audio synthesizer controls inspired by sensorimotor interaction', *ICASSP 2022 — IEEE International Conference on Acoustics, Speech and Signal Processing*, pp. 946–950. doi:10.1109/ICASSP43922.2022.9747358.
+14. **Shenoy, K.V., Sahani, M. and Churchland, M.M.** (2013) 'Cortical control of arm movements: a dynamical systems perspective', *Annual Review of Neuroscience*, 36, pp. 337–359. doi:10.1146/annurev-neuro-062111-150509.
 
-15. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.
+15. **Shinn, M.** (2023) 'Phantom oscillations in principal component analysis', *Proceedings of the National Academy of Sciences*, 120(48). doi:10.1073/pnas.2311420120.
+
+16. **Siriwardena, Y.M., Marion, G. and Shamma, S.** (2022) 'The MirrorNet: learning audio synthesizer controls inspired by sensorimotor interaction', *ICASSP 2022 — IEEE International Conference on Acoustics, Speech and Signal Processing*, pp. 946–950. doi:10.1109/ICASSP43922.2022.9747358.
+
+17. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.

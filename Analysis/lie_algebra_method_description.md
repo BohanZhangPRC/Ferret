@@ -6,11 +6,15 @@ This document describes the mathematical foundation, modeling pipeline, and phys
 
 The overarching goal is to understand how the primary auditory cortex (A1) and premotor cortex (PMC) implement an internal **forward model** during a continuous sensorimotor task. A ferret operates in a **closed-loop (Tracking)** condition where its continuous head velocity directly controls the frequency of an acoustic note, contrasted with an **open-loop (Playback)** condition where the same acoustic sequence is replayed without motor control.
 
+Modeling the neural state evolution $\frac{dR}{dt}$ as a system driven by an external motor command $x(t)$ follows directly from the classical computational framework of **continuous state estimation for sensorimotor integration**, formalized by **Wolpert, Ghahramani, & Jordan (1995, *Science*)**. In this framework, the brain continuously uses efference copies of motor commands to predict and cancel the sensory consequences of self-generated actions. The Lie algebra model operationalizes this idea geometrically: the motor command does not merely modulate neural gain — it actively *steers* the neural state along a structured manifold via the skew-symmetric generator $J_{\mathrm{skew}}$.
+
 A functional forward model would need to accomplish two things simultaneously:
 1. **Continuous Prediction Updating:** Use the ongoing motor command (head kinematics) to continuously update the prediction of the upcoming sensory state (acoustic frequency).
 2. **Sensory Attenuation:** Suppress the predictable sensory consequences of self-generated movement to filter out reafferent noise.
 
 The mathematical framework below captures both phenomena geometrically within the neural population's state space. Note that eigenvalue |Real| (dissipation) and |Imag| (rotation) can be interpreted as signatures of sensory attenuation and predictive updating respectively, but these are **hypotheses to be tested**, not confirmed facts.
+
+**Behavioral context:** In the closed-loop sensorimotor paradigm used here (cf. Shamma et al., 2021+, on active sensing and sensorimotor interactions), the auditory cortex is not a passive feature extractor — it is an active hub dynamically reshaped by motor feedback. The contrast between Tracking and Playback conditions is therefore not merely a control for attention or arousal; it is a direct test of whether the motor-to-sensory transformation operates as a structured geometric operation (Lie group rotation) rather than unstructured gain modulation.
 
 ---
 
@@ -26,6 +30,8 @@ $$
 - **$x(t)$**: The continuous external behavioral drive (e.g., instantaneous head velocity `Velocity_x` or cumulative `Position`).
 - **$J_{\mathrm{skew}}$**: The skew-symmetric (rotational) component of the fitted generator — responsible for rotating the neural state in response to the behavioral drive.
 - **$L$**: An unconstrained linear "leak" term that captures baseline decay, drift, or restoring forces independent of the behavioral drive. It handles the natural dynamics of the neural system when $x(t) = 0$.
+
+**Anatomical basis for the motor drive $x(t)$:** The biological plausibility of a motor-command signal directly gating auditory cortical dynamics is supported by established neuroanatomy. **Nelson, Schneider, & Mooney (2013, *J. Neurosci.*)** demonstrated that the secondary motor cortex (M2 / PMC) sends direct, monosynaptic excitatory projections to the primary auditory cortex (A1). These projections carry motor-related signals — including corollary discharge of movement commands — that can act as the biophysical implementation of $x(t)$: a behaviorally-gated input that dynamically modulates the gain and phase of auditory representations. In the Lie algebra framework, this anatomical pathway provides the physical conduit through which head velocity becomes the gating variable that steers the generator $J_{\mathrm{skew}}$.
 
 ---
 
@@ -132,6 +138,8 @@ dr_dt = np.gradient(r, dt, axis=0)   # shape (T, N)
 
 This is what the model must predict — how each neuron's activity changes from one moment to the next.
 
+**Smoothing note:** `np.gradient` on raw spike-rate data amplifies high-frequency Poisson noise. While the current pipeline operates directly on binned and CEBRA-smoothed embeddings (which mitigates this), a principled upgrade for raw-space analyses is to pre-smooth neural trajectories via **Gaussian Process Factor Analysis (vGPFA)** or **Kalman smoothing** before derivative estimation. These methods extract continuous latent trajectories under a Poisson-like observation model, providing low-noise $R(t)$ and analytically derived $\dot{R}(t)$ without finite-difference artifacts.
+
 #### Step 2: Build the design matrix (independent variables)
 
 The model equation $dR/dt = J \cdot (R \cdot x) + L \cdot R$ says the derivative at time $t$ depends on two things:
@@ -214,6 +222,8 @@ sr = np.linalg.norm(J_skew) / np.linalg.norm(J_ols)
 
 The OLS variant (`LIE_METHOD = "lstsq"`) and the PyTorch variant (`"pytorch"`) differ only in how $J_{\mathrm{skew}}$ and $L$ are obtained (post-hoc skew-symmetrization vs. constrained gradient descent with $J = W - W^T$). Both produce functionally equivalent $J_{\mathrm{skew}}$, SR, R², and R²_drive metrics. The current pipeline uses `"lstsq"` by default for speed and reproducibility.
 
+**Optimization Caveat — post-hoc skew-symmetrization vs. constrained fitting:** The OLS approach solves for an unconstrained $J_{\mathrm{ols}}$ and then extracts $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$. This yields the *skew-symmetric projection of the unconstrained optimum*, which is **not guaranteed to be the constrained global optimum** — i.e., the best possible skew-symmetric matrix under the Lie algebra constraint may differ from the post-hoc projection. The PyTorch variant (`_fit_lie_pytorch`) addresses this by parameterizing $J = W - W^T$ directly and optimizing under the constraint via gradient descent. A planned future upgrade is to use PyTorch-constrained fitting as the default, solving $\min_{J^T = -J, L} \|dR/dt - J \cdot (R \cdot x) - L \cdot R\|^2$ exactly on the Lie algebra manifold.
+
 ---
 
 ## 3. Metrics: Skewness Ratio, R², and R²_drive
@@ -267,6 +277,8 @@ imag_mean = np.mean(np.abs(np.imag(eigvals)))
 
 A higher $|Imag|$ in Tracking would suggest active movement **drives stronger rotational dynamics** (consistent with predictive updating). A higher $|Real|$ in Tracking would suggest active movement **enhances state contraction** (consistent with sensory attenuation).
 
+**Biological mechanism for $|Real|$ (dissipation):** The interpretation of the real eigenvalue component as sensory attenuation has a concrete synaptic-level candidate. **Schneider, Nelson, & Mooney (2014, *Nature*)** demonstrated that motor-corollary discharge signals recruit local parvalbumin-positive (PV+) inhibitory interneurons in A1, producing precisely timed suppression of auditory responses to self-generated sounds. In the geometric framework, this inhibition corresponds to the negative real part of $J_{\mathrm{ols}}$ eigenvalues — an active contraction of the neural state amplitude along specific manifold directions, gated by the motor command $x(t)$. The $|Real|$ metric is thus not an abstract mathematical quantity but a population-level readout of this disynaptic inhibitory motif.
+
 ---
 
 ## 5. Pipeline: Data Preprocessing
@@ -299,7 +311,7 @@ When using CEBRA embeddings (Sections 1.3–1.4 in the analysis notebook):
 
 4. **Time-shuffled control:** For each epoch, the behavioral labels are randomly permuted 10 times (`N_SHUFFLES = 10`), and the Lie algebra is re-fit on each permutation (same CEBRA embedding, shuffled labels). The CEBRA model is **not** retrained — the embedding stays fixed, and only the OLS Lie algebra fit is repeated. This is the critical design choice: it tests whether the *temporal alignment* between the behavioral variable and the neural state matters, without confounding from re-embedding. The shuffle metrics (`SR_shuffle`, `R2_shuffle`, `R2_drive_shuffle`) are averaged across the 10 realizations to reduce baseline noise.
 
-5. **R² gate:** A session-condition is considered to have meaningful rotational structure only if $R^2_{\mathrm{true}} > R^2_{\mathrm{shuffle}}$ (total R²) **and** $R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, shuffle}}$ (drive-specific R²). The drive-specific gate is stricter and more informative.
+5. **R² gate:** A session-condition is considered to have meaningful rotational structure only if $R^2_{\mathrm{true}} > R^2_{\mathrm{shuffle}}$ (total R²) **and** $R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, shuffle}}$ (drive-specific R²). **The drive-specific gate ($R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, shuffle}}$) is the primary validation criterion.** In low-dimensional embeddings (e.g., 3D CEBRA), the leak term $L \cdot R$ dominates the total R², making the total R² gate weak and potentially misleading. The $R^2_{\mathrm{drive}}$ gate isolates the behavioral drive contribution and is the stricter, more interpretable threshold: it directly answers whether the time-aligned motor command explains additional derivative variance beyond what the autonomous leak dynamics already capture.
 
 6. **Paired comparisons:** Tracking vs. Playback comparisons use paired t-tests at the session level. Since each session has one CEBRA model shared across conditions, per-condition statistics are reported separately.
 
@@ -331,6 +343,20 @@ There is no external behavioral drive. It assumes the neural state rotates auton
 This analysis fits an **input-driven** system:
 $$ \dot{R} = J \cdot R \cdot x_{\mathrm{drive}} + L \cdot R $$
 The behavioral variable ($x_{\mathrm{drive}}$) explicitly gates the rotation and dissipation. The generator $J$ is unconstrained during the OLS fit, allowing simultaneous capture of rotation ($J_{\mathrm{skew}}$ / imaginary eigenvalues) and dissipation (real eigenvalues of $J_{\mathrm{ols}}$). This makes it uniquely suited for studying continuous closed-loop sensorimotor integration, where external actions continuously force the neural state.
+
+### Extending to Multi-Input Bilinear Dynamics (Bilinear LDS)
+
+The current model treats the behavioral drive $x(t)$ as a 1D scalar (e.g., head velocity). This is a deliberate simplification that maximizes interpretability — a single rotational plane with a single gating variable. However, real sensorimotor behavior involves multiple simultaneous signals: velocity, acceleration, cumulative position, frequency error, and their lagged histories. A natural extension that preserves geometric interpretability while adding richness is the **multi-input bilinear dynamical system (Bilinear LDS)**:
+
+$$ \dot{z} = A_0 z + \sum_{k} u_k(t) \cdot A_k z $$
+
+where:
+- $z(t)$ is the latent neural state (e.g., CEBRA embedding)
+- $A_0$ is the autonomous dynamics matrix (analogous to $L$)
+- $u_k(t)$ are multiple behavioral inputs (velocity, acceleration, position, error, etc.)
+- Each $A_k$ is independently decomposable into skew-symmetric ($J_k$) and symmetric ($S_k$) components: $A_k = J_k + S_k$
+
+This framework generalizes the single-drive Lie algebra model to a **multi-channel behavioral gating system** while preserving the core geometric structure: each $A_k$ has its own SR, eigenvalue spectrum, and can be tested for rotational dominance independently. It connects to the modern literature on **adaptive unitary state-space models** (cf. NeurIPS 2025 unitary SSM lineage) and continuous-time bilinear recurrent neural networks, positioning the current 1D-drive model as the minimal interpretable case within a broader class of structured sensorimotor dynamics models.
 
 ---
 
@@ -374,6 +400,18 @@ This is **not a bug** — it is a direct consequence of the model design. The to
 ### Why 10 shuffles per epoch
 
 A single shuffle is one random pairing of labels and neural states, and can be "lucky" or "unlucky" — producing a shuffle SR that is accidentally high or low due to sampling noise. Averaging across 10 independent permutations reduces the baseline variance by a factor of ~10 and gives a stable estimate of the null distribution.
+
+### The strongest negative control: Shuffle-Label CEBRA
+
+The time-shuffled control described above re-fits only the OLS Lie algebra step on a fixed CEBRA embedding. This leaves a potential vulnerability: **CEBRA itself is trained with behavioral labels**, so the embedding manifold may have been shaped by the same behavioral structure that the Lie algebra then detects. A skeptic could argue that any contrastive embedding trained on velocity labels will produce a manifold that *looks* rotational under a Lie algebra fit, regardless of whether the underlying neural dynamics are genuinely rotational.
+
+The gold-standard negative control to address this is the **Shuffle-Label CEBRA Control**:
+
+1. **Train a dummy CEBRA model** on the same neural data but with **fully shuffled behavioral labels** — the time structure and behavioral contingency are destroyed before the embedding is learned.
+2. **Fit the Lie algebra** in this dummy embedding space, computing SR, $R^2$, and $R^2_{\mathrm{drive}}$ exactly as in the true pipeline.
+3. **Compare:** The true-embedding metrics must be significantly higher than the dummy-embedding metrics for the rotational dynamics claim to hold.
+
+If $SR_{\mathrm{true}} > SR_{\mathrm{dummy}}$ **and** $R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, dummy}}$, then the rotational structure is a genuine property of the neural population dynamics, not an artifact of the InfoNCE loss function imprinting rotational topology onto the embedding. This control is computationally expensive (requires retraining CEBRA for each session) and is planned as a confirmatory analysis for the final publication version of this pipeline.
 
 ---
 
@@ -436,7 +474,7 @@ $$ \max \ \mathrm{Var}(X \cdot w), \quad \|w\| = 1 $$
 
 It does not look at behavioral labels. A dimension with large variance from global arousal or reward expectation will dominate; a dimension with small raw variance that perfectly encodes velocity may be discarded entirely — shuffled into the 15th or 20th principal component and lost.
 
-**CEBRA** uses contrastive learning (InfoNCE loss):
+**CEBRA** (**Schneider, Lee, & Mathis, 2023, *Nature***) uses contrastive learning (InfoNCE loss):
 
 $$ L_{\mathrm{CEBRA}} = -\log \frac{\exp(\mathrm{sim}(z_i, z_i^+))}{\sum_j \exp(\mathrm{sim}(z_i, z_j^-))} $$
 
@@ -479,10 +517,10 @@ This is the foundational reason why the Lie algebra rotational dynamics fit succ
 
 ### 11.2 CEBRA vs jPCA (behavior-driven vs variance-driven rotation)
 
-**jPCA** is an extension of PCA specifically designed for rotational dynamics. It works in two steps:
+**jPCA** (**Churchland et al., 2012, *Nature***) is an extension of PCA specifically designed for rotational dynamics. It fits an **autonomous** (no external drive) rotational system $\dot{x} = M_{\mathrm{skew}} \cdot x$ after PCA-based dimensionality reduction. It works in two steps:
 
 1. **PCA:** Reduce to top K principal components (variance-maximizing)
-2. **Skew-symmetric fit:** Fit an autonomous rotational system $\dot{x} = M_{\mathrm{skew}} \cdot x$ in the PCA-reduced space
+2. **Skew-symmetric fit:** Fit the autonomous rotational system in the PCA-reduced space
 
 The critical weakness is **Step 1**. If the behaviorally relevant signal does not dominate the raw variance — which is common when global state variables (arousal, anesthesia depth, reward) fluctuate strongly — it will be submerged in the discarded PCA dimensions before jPCA ever sees it. jPCA's rotational fit then operates on dimensions dominated by non-behavioral variance, and the tracking-related rotation may be entirely invisible.
 
@@ -492,7 +530,7 @@ The critical weakness is **Step 1**. If the behaviorally relevant signal does no
 
 ### 11.3 dPCA (Demixed PCA — linear supervised dimensionality reduction)
 
-dPCA (Kobak et al., 2016) is a **linear supervised dimensionality reduction** method. It uses task labels (stimulus, decision, time) to find "demixed" low-dimensional axes — e.g., the first dPC isolates stimulus-dependent variance, the second isolates decision-dependent variance, and so on. Unlike standard PCA (unsupervised, variance-maximizing), dPCA incorporates the experimental design into the decomposition.
+dPCA (**Kobak et al., 2016, *eLife***) is a **linear supervised dimensionality reduction** method. It uses task labels (stimulus, decision, time) to find "demixed" low-dimensional axes — e.g., the first dPC isolates stimulus-dependent variance, the second isolates decision-dependent variance, and so on. Unlike standard PCA (unsupervised, variance-maximizing), dPCA incorporates the experimental design into the decomposition.
 
 **Why it is not used in place of CEBRA here:** dPCA achieves demixing via **regularized linear regression** — the latent axes are constrained to be orthogonal linear combinations of the input neurons. This linearity has two consequences relevant to this pipeline:
 

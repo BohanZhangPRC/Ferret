@@ -299,9 +299,30 @@ The behavioral variable (velocity, position) **drives the training**. CEBRA nonl
 | Example failure | Keeps heart-rate artifact, drops velocity code | Keeps velocity code, drops heart-rate artifact |
 | Topology | May scramble manifold curvature | Preserves geometric curvature and topology |
 
+#### Why PCA is "time-blind" — and why that matters for dynamics
+
+The most fundamental difference between PCA and CEBRA is **whether the algorithm cares about time**.
+
+**PCA is time-blind.** If you take the entire experimental recording, randomly shuffle the time order of all data points (putting second 1 at minute 10, second 2 at hour 3, etc.), PCA will compute **exactly the same principal axes and the same reduced representation**. The covariance matrix — PCA's only input — is invariant to any permutation of time. PCA sees neural activity as a cloud of static points in space and asks: "which directions have the most scatter?" If the largest-variance signal is resting-state baseline drift, or time-independent global arousal, PCA will fill its top components with these static features — and velocity-coding neurons, which may have tiny variance but precise temporal structure, will be discarded.
+
+**Dynamics require time.** The Lie algebra framework is fundamentally temporal: it fits the derivative $dR/dt$ — how the current state transitions to the next state. It asks "does the behavioral drive *cause* the neural state to rotate?" This causal-temporal question cannot be answered in a space built by a time-blind algorithm. The extracted axes must encode not just what the brain is doing *on average*, but how it moves from one state to the next over time.
+
+**CEBRA is time- and behavior-aware.** Its contrastive learning pairs data points based on their **temporal and behavioral proximity**: if time $t$ and $t+1$ share similar velocity/position, their neural states are pulled together in the embedding; if they are behaviorally far apart, they are pushed apart. This means CEBRA's embedding intrinsically encodes the **continuous temporal evolution** of the neural state in relation to behavior. The resulting latent space is not a static snapshot of variance — it is a **continuous geometric movie** of the sensorimotor transformation.
+
+**Analogy:**
+
+| | PCA | CEBRA |
+|---|---|---|
+| **What it produces** | A static "variance X-ray" of the brain | A continuous geometric animation guided by behavior |
+| **Time** | Ignored — shuffle the data, same result | Essential — defines positive/negative pairs |
+| **What survives** | Whatever has largest amplitude | Whatever has clearest behavioral structure |
+| **Suitable for** | Static population coding analysis | Dynamical systems analysis (Lie algebra, jPCA-like rotation detection, state-space trajectory modeling) |
+
+This is the foundational reason why the Lie algebra rotational dynamics fit successfully in CEBRA space but would be swamped by static noise in raw or PCA-reduced space.
+
 ---
 
-### 11.2 CEBRA vs jPCA (behavior-driven vs variance-driven rotation)
+### 11.2 CEBRA vs jPCA (behavior-driven vs variance-driven rotation) (behavior-driven vs variance-driven rotation)
 
 **jPCA** is an extension of PCA specifically designed for rotational dynamics. It works in two steps:
 

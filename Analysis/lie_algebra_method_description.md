@@ -9,18 +9,18 @@ The overarching goal is to understand how the primary auditory cortex (A1) and p
 Modeling the neural state evolution $\frac{dR}{dt}$ as a system driven by an external motor command $x(t)$ follows directly from the classical computational framework of **continuous state estimation for sensorimotor integration**, formalized by **Wolpert, Ghahramani, & Jordan (1995, *Science*)**. In this framework, the brain continuously uses efference copies of motor commands to predict and cancel the sensory consequences of self-generated actions. The Lie algebra model operationalizes this idea geometrically: the motor command does not merely modulate neural gain — it actively *steers* the neural state along a structured manifold via the skew-symmetric generator $J_{\mathrm{skew}}$.
 
 A functional forward model would need to accomplish two things simultaneously:
-1. **Continuous Prediction Updating:** Use the ongoing motor command (head kinematics) to continuously update the prediction of the upcoming sensory state (acoustic frequency).
-2. **Sensory Attenuation:** Suppress the predictable sensory consequences of self-generated movement to filter out reafferent noise.
+1. **Continuous Prediction Updating:** Use the ongoing motor command (head kinematics) to continuously update the prediction of the upcoming sensory state (acoustic frequency) — a canonical cortical computation formalized by **Keller & Mrsic-Flogel (2018, *Neuron*)** as predictive processing.
+2. **Sensory Attenuation:** Suppress the predictable sensory consequences of self-generated movement to filter out reafferent noise — first demonstrated at the single-neuron level in primate auditory cortex by **Eliades & Wang (2008, *Nature*)**.
 
 The mathematical framework below captures both phenomena geometrically within the neural population's state space. Note that eigenvalue |Real| (dissipation) and |Imag| (rotation) can be interpreted as signatures of sensory attenuation and predictive updating respectively, but these are **hypotheses to be tested**, not confirmed facts.
 
-**Behavioral context:** In the closed-loop sensorimotor paradigm used here (cf. Shamma et al., 2021+, on active sensing and sensorimotor interactions), the auditory cortex is not a passive feature extractor — it is an active hub dynamically reshaped by motor feedback. The contrast between Tracking and Playback conditions is therefore not merely a control for attention or arousal; it is a direct test of whether the motor-to-sensory transformation operates as a structured geometric operation (Lie group rotation) rather than unstructured gain modulation.
+**Behavioral context:** In the closed-loop sensorimotor paradigm used here (cf. Shamma et al., 2021+, on active sensing and sensorimotor interactions), the auditory cortex is not a passive feature extractor — it is an active hub dynamically reshaped by motor feedback. **Schneider & Mooney (2018, *Annu. Rev. Neurosci.*)** reviewed the converging evidence that motor-related signals globally modulate auditory cortical processing across species, establishing the biological plausibility of motor-to-auditory transformations as a general principle. Complementary engineering models such as **MirrorNet** (which learns audio synthesizer controls inspired by sensorimotor interaction) demonstrate that closed-loop motor-auditory architectures can self-organize structured internal representations. The contrast between Tracking and Playback conditions is therefore not merely a control for attention or arousal; it is a direct test of whether the motor-to-sensory transformation operates as a structured geometric operation (Lie group rotation) rather than unstructured gain modulation.
 
 ---
 
 ## 2. Foundational Math & Model
 
-We model the neural population dynamics as an input-driven continuous linear dynamical system:
+We model the neural population dynamics as an input-driven continuous linear dynamical system, following the dynamical systems perspective on cortical computation articulated by **Shenoy, Sahani, & Churchland (2013, *Annu. Rev. Neurosci.*)**:
 
 $$
 \frac{dR}{dt} = J_{\mathrm{skew}} \cdot R \cdot x(t) + L \cdot R
@@ -614,12 +614,22 @@ At 12+ dimensions (144 J parameters), the model can fit essentially any structur
 
 1. **Churchland, M.M., Cunningham, J.P., Kaufman, M.T., Foster, J.D., Nuyujukian, P., Ryu, S.I. and Shenoy, K.V.** (2012) 'Neural population dynamics during reaching', *Nature*, 487(7405), pp. 51–56. doi:10.1038/nature11129.
 
-2. **Kobak, D., Brendel, W., Constantinidis, C., Feierstein, C.E., Kepecs, A., Mainen, Z.F., Qi, X.L., Romo, R., Uchida, N. and Machens, C.K.** (2016) 'Demixed principal component analysis of neural population data', *eLife*, 5, p. e10989. doi:10.7554/eLife.10989.
+2. **Eliades, S.J. and Wang, X.** (2008) 'Neural substrates of vocalization-feedback monitoring in primate auditory cortex', *Nature*, 453(7198), pp. 1102–1106. doi:10.1038/nature06910.
 
-3. **Nelson, A., Schneider, D.M. and Mooney, R.** (2013) 'A circuit for motor cortical modulation of auditory cortical activity', *Journal of Neuroscience*, 33(36), pp. 14342–14353. doi:10.1523/JNEUROSCI.0935-13.2013.
+3. **Keller, G.B. and Mrsic-Flogel, T.D.** (2018) 'Predictive processing: a canonical cortical computation', *Neuron*, 100(2), pp. 424–435. doi:10.1016/j.neuron.2018.10.003.
 
-4. **Schneider, D.M., Nelson, A. and Mooney, R.** (2014) 'A synaptic and circuit basis for corollary discharge in the auditory cortex', *Nature*, 513(7517), pp. 189–194. doi:10.1038/nature13724.
+4. **Kobak, D., Brendel, W., Constantinidis, C., Feierstein, C.E., Kepecs, A., Mainen, Z.F., Qi, X.L., Romo, R., Uchida, N. and Machens, C.K.** (2016) 'Demixed principal component analysis of neural population data', *eLife*, 5, p. e10989. doi:10.7554/eLife.10989.
 
-5. **Schneider, S., Lee, J.H. and Mathis, M.W.** (2023) 'Learnable latent embeddings for joint behavioural and neural analysis', *Nature*, 617(7960), pp. 360–368. doi:10.1038/s41586-023-06031-6.
+5. **Nelson, A., Schneider, D.M. and Mooney, R.** (2013) 'A circuit for motor cortical modulation of auditory cortical activity', *Journal of Neuroscience*, 33(36), pp. 14342–14353. doi:10.1523/JNEUROSCI.0935-13.2013.
 
-6. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.
+6. **Schneider, D.M. and Mooney, R.** (2018) 'How movement modulates hearing', *Annual Review of Neuroscience*, 41, pp. 553–572. doi:10.1146/annurev-neuro-072116-031215.
+
+7. **Schneider, D.M., Nelson, A. and Mooney, R.** (2014) 'A synaptic and circuit basis for corollary discharge in the auditory cortex', *Nature*, 513(7517), pp. 189–194. doi:10.1038/nature13724.
+
+8. **Schneider, S., Lee, J.H. and Mathis, M.W.** (2023) 'Learnable latent embeddings for joint behavioural and neural analysis', *Nature*, 617(7960), pp. 360–368. doi:10.1038/s41586-023-06031-6.
+
+9. **Shamma, S., Patel, P., Mukherjee, S., Marion, G., Khalighinejad, B., Han, C., Herrero, J., Bickel, S., Mehta, A. and Mesgarani, N.** (2021) 'Learning speech production and perception through sensorimotor interactions', *Cerebral Cortex Communications*, 2(1), p. tgaa091. doi:10.1093/texcom/tgaa091.
+
+10. **Shenoy, K.V., Sahani, M. and Churchland, M.M.** (2013) 'Cortical control of arm movements: a dynamical systems perspective', *Annual Review of Neuroscience*, 36, pp. 337–359. doi:10.1146/annurev-neuro-062111-150509.
+
+11. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.

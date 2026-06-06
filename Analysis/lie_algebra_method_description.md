@@ -610,6 +610,105 @@ At 12+ dimensions (144 J parameters), the model can fit essentially any structur
 
 ---
 
+## 12. Limitations
+
+This framework offers a geometrically interpretable window into sensorimotor neural dynamics, but it carries several limitations that should be weighed when interpreting results or planning follow-up analyses.
+
+### 12.1 Circular reasoning risk between CEBRA embedding and Lie algebra fitting
+
+**The concern:** CEBRA's contrastive learning (InfoNCE loss) uses the same behavioral variable $x(t)$ (e.g., velocity or position) that subsequently drives the Lie algebra model. The embedding manifold is thus *shaped in advance* by the behavioral labels. Fitting $J_{\mathrm{skew}}$ with the same $x(t)$ on this behaviorally-shaped manifold can produce high Skewness Ratios as an algorithmic artifact — the embedding geometry and the rotational fit are not independent. The question is whether the observed rotational structure reflects intrinsic neural population dynamics or the InfoNCE loss imprinting rotational topology onto the manifold.
+
+**Mitigations in current pipeline:**
+
+| Defense | How it helps | Residual concern |
+|---------|-------------|-----------------|
+| Time-shuffled control (Sec 9) | Destroys temporal alignment between $x(t)$ and $R(t)$ within the fixed embedding; tests whether the rotation is label-dependent | Does not rule out embedding-level artifacts — the manifold itself may have been shaped by behavioral labels during CEBRA training |
+| Raw-space analysis (Sec 1.1–1.2) | Lie algebra fit in unsmoothed, unreduced neural space — no embedding bias | Raw space has lower SR and higher noise; results may differ in magnitude but should show consistent direction |
+| Shuffle-Label CEBRA Control (Sec 9) | Retrains CEBRA on fully shuffled labels, then fits Lie algebra in the dummy embedding | Computationally expensive; planned as confirmatory analysis, not yet implemented in current pipeline |
+
+**Comparison to standard methods:** jPCA (Churchland et al., 2012) searches for rotational dynamics in **unsupervised** PCA space — it avoids the circularity risk entirely by not using behavioral labels during dimensionality reduction, but can miss low-variance behaviorally relevant signals. CEBRA inverts this tradeoff: it recovers weak but behaviorally crucial signals at the cost of potential embedding bias.
+
+### 12.2 Post-hoc skew-symmetrization is not the constrained optimum
+
+The OLS pipeline solves for an unconstrained $J_{\mathrm{ols}}$ and then extracts $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$. This yields the *skew-symmetric projection of the unconstrained optimum*, which is not guaranteed to be the best skew-symmetric matrix under the Lie algebra constraint. In rigorous Lie group dynamical systems (e.g., $SO(N)$ or $SE(N)$ models), the state is constrained *during* optimization, not post-hoc. The current approach minimizes the total prediction error, not the prediction error under the rotation-only hypothesis.
+
+### 12.3 Low $R^2_{\mathrm{drive}}$ weakens causal interpretation
+
+In the 3D CEBRA pipeline, $R^2_{\mathrm{drive}}$ is typically near zero — the behavioral drive explains negligible *additional* derivative variance beyond the autonomous leak term. While this can be partially attributed to compression (Sec 11.4), it remains a vulnerability: in standard input-driven dynamical systems modeling, a drive term that contributes near-zero incremental $R^2$ faces scrutiny as to whether it is genuinely the mechanism propelling the system. The current framework is better characterized as a **geometric feature extractor** (quantifying the rotational *shape* of the generator) than a **generative physical dynamics model** (predicting state trajectories from the drive).
+
+### 12.4 Scalar drive and linear gating assumptions
+
+The model $dR/dt = J_{\mathrm{skew}} \cdot R \cdot x(t) + L \cdot R$ assumes:
+- $x(t)$ is a **1D scalar** (e.g., head velocity)
+- The gating is **purely multiplicative and linear** ($R \cdot x$)
+
+Real sensorimotor integration is high-dimensional and nonlinear. A1 and PMC receive multidimensional proprioceptive feedback, top-down predictive error signals, and corollary discharge — not a single kinematic scalar. The scalar linear gating assumption is a deliberate simplification for interpretability, but it may miss structure (e.g., nonlinear gain modulation, multi-input interactions) that higher-capacity models would capture.
+
+### 12.5 Lack of explicit noise and uncertainty modeling
+
+The pipeline uses deterministic finite differences (`np.gradient`) and deterministic OLS regression. Neural spiking data has substantial Poisson noise and trial-to-trial variability. The gold standard in modern computational neuroscience (GPFA, LFADS, Kalman filtering variants) uses **probabilistic generative models** that explicitly separate process noise (uncertainty in latent state evolution) from observation noise (stochastic mapping from latent state to spikes). Computing derivatives directly on binned spike counts or embedding trajectories amplifies high-frequency noise, and OLS fits on noisy derivatives inherit this noise.
+
+---
+
+## 13. Future Directions
+
+The following improvements would address the limitations identified above and move the framework from geometric feature extraction toward generative physical modeling.
+
+### 13.1 End-to-end joint optimization of embedding and dynamics
+
+**Current:** CEBRA embedding → Lie algebra fit (two-stage pipeline, shared behavioral labels).
+
+**Proposed:** A single PyTorch model with a joint loss function:
+
+$$ \mathcal{L} = \mathcal{L}_{\mathrm{InfoNCE}} + \lambda \cdot \mathcal{L}_{\mathrm{Dynamics}} $$
+
+where $\mathcal{L}_{\mathrm{Dynamics}}$ penalizes deviations from $dR/dt = J_{\mathrm{skew}} \cdot R \cdot x + L \cdot R$. The encoder (CEBRA-like MLP) learns a latent representation $R$ that simultaneously satisfies the contrastive behavioral objective *and* the Lie algebra dynamical constraint. This breaks the circular reasoning concern: the embedding is not merely shaped by behavioral labels, but also by the requirement that its dynamics follow a physically interpretable equation.
+
+### 13.2 Strict Lie group parameterization and constrained optimization
+
+**Current:** OLS + post-hoc $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$.
+
+**Proposed:** Parameterize $J$ directly on the Lie algebra $\mathfrak{so}(N)$ (the space of skew-symmetric $N \times N$ matrices) using only the $N(N-1)/2$ independent parameters. Optimize under the constraint $J^T = -J$ using manifold-aware optimizers (e.g., Geoopt library). The state evolution can be expressed via the matrix exponential:
+
+$$ R(t + \Delta t) = \exp(J_{\mathrm{skew}} \cdot x(t) \cdot \Delta t) \cdot R(t) $$
+
+using `torch.matrix_exp`. This ensures the rotational geometry is preserved *throughout* optimization rather than enforced after the fact, and the learned $J_{\mathrm{skew}}$ is the true constrained optimum.
+
+### 13.3 Neural ODE for continuous-time, noise-robust fitting
+
+**Current:** Discrete `np.gradient` derivatives → OLS fitting.
+
+**Proposed:** Replace the discrete gradient + OLS pipeline with a **Neural ODE** framework. Define the state evolution as:
+
+$$ \frac{dR}{dt} = f_\theta(R(t), x(t)) $$
+
+where $f_\theta$ contains the structured generator ($J_{\mathrm{skew}}$ and $L$) within a differentiable ODE solver (e.g., RK4 or Dormand-Prince). The ODE is integrated forward in time and the loss is computed against the observed neural trajectory. This approach:
+- Eliminates finite-difference derivative noise
+- Handles non-uniform sampling and missing data gracefully
+- Fits parameters through the integrated trajectory, not instantaneous derivatives
+- Provides a natural bridge to probabilistic extensions (Latent ODEs, variational inference over $R(t)$)
+
+### 13.4 Nonlinear multi-dimensional forward model
+
+**Current:** Scalar $x(t)$ linearly gates a single fixed $J_{\mathrm{skew}}$.
+
+**Proposed:** Replace $J_{\mathrm{skew}} \cdot x(t)$ with a learned control network that maps multi-dimensional behavioral inputs to a linear combination of Lie algebra basis generators:
+
+$$ J(t) = \sum_{k} w_k(\mathbf{x}_t) \cdot G_k $$
+
+where $\mathbf{x}_t$ is a vector of kinematic variables (velocity, acceleration, position, error, and their lagged histories), $G_k$ are fixed skew-symmetric basis matrices spanning $\mathfrak{so}(N)$, and $w_k$ are scalar weights produced by a lightweight neural network. This generalizes the model from "a single steering wheel turning at variable speed" to "a cockpit with multiple control surfaces, each engaged differently depending on the behavioral context." The increase in $R^2_{\mathrm{drive}}$ from this expansion would directly test whether the current low drive variance is due to the scalar linear gating assumption rather than the absence of genuine motor-to-sensory drive.
+
+### 13.5 Probabilistic generative extension
+
+Embed the structured Lie dynamics within a probabilistic state-space model:
+
+$$ R_{t+1} \sim \mathcal{N}(\exp(J_{\mathrm{skew}} \cdot x_t \cdot \Delta t) \cdot R_t + L \cdot R_t \cdot \Delta t, \; Q) $$
+$$ y_t \sim \mathrm{Poisson}(f(R_t)) $$
+
+where $Q$ is the process noise covariance and $f$ is a learned or fixed observation model mapping from latent state to spike counts. Inference via Kalman smoothing or variational autoencoders would provide uncertainty estimates on $J_{\mathrm{skew}}$ and allow model comparison (e.g., rotation model vs. non-rotation baseline) via marginal likelihood rather than point-estimate metrics.
+
+---
+
 ## References
 
 1. **Churchland, M.M., Cunningham, J.P., Kaufman, M.T., Foster, J.D., Nuyujukian, P., Ryu, S.I. and Shenoy, K.V.** (2012) 'Neural population dynamics during reaching', *Nature*, 487(7405), pp. 51–56. doi:10.1038/nature11129.

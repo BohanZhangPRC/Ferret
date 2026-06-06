@@ -607,3 +607,19 @@ At 12+ dimensions (144 J parameters), the model can fit essentially any structur
 | **12D+** | 144+ | Many | Diluted | May rise further | High — noise planes can mimic rotation | Poor — diffuse eigenvalue spectra |
 
 **The key insight:** 3D CEBRA's R²_drive ≈ 0 (with high SR) is not a failure — it is the expected behavior when a minimal embedding concentrates rotational structure into few parameters, leaving the leak term dominant. This is analogous to compressing a high-resolution image: the essential shape (SR) is preserved, but the fine-grained variance (R²_drive) is lost to compression. Higher embedding dimensions can recover this variance at the cost of interpretability and increased overfitting risk.
+
+---
+
+## References
+
+1. **Churchland, M.M., Cunningham, J.P., Kaufman, M.T., Foster, J.D., Nuyujukian, P., Ryu, S.I. and Shenoy, K.V.** (2012) 'Neural population dynamics during reaching', *Nature*, 487(7405), pp. 51–56. doi:10.1038/nature11129.
+
+2. **Kobak, D., Brendel, W., Constantinidis, C., Feierstein, C.E., Kepecs, A., Mainen, Z.F., Qi, X.L., Romo, R., Uchida, N. and Machens, C.K.** (2016) 'Demixed principal component analysis of neural population data', *eLife*, 5, p. e10989. doi:10.7554/eLife.10989.
+
+3. **Nelson, A., Schneider, D.M. and Mooney, R.** (2013) 'A circuit for motor cortical modulation of auditory cortical activity', *Journal of Neuroscience*, 33(36), pp. 14342–14353. doi:10.1523/JNEUROSCI.0935-13.2013.
+
+4. **Schneider, D.M., Nelson, A. and Mooney, R.** (2014) 'A synaptic and circuit basis for corollary discharge in the auditory cortex', *Nature*, 513(7517), pp. 189–194. doi:10.1038/nature13724.
+
+5. **Schneider, S., Lee, J.H. and Mathis, M.W.** (2023) 'Learnable latent embeddings for joint behavioural and neural analysis', *Nature*, 617(7960), pp. 360–368. doi:10.1038/s41586-023-06031-6.
+
+6. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.

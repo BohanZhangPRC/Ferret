@@ -142,7 +142,7 @@ When using CEBRA embeddings (Sections 1.3–1.4 in the analysis notebook):
 
 3. **Metrics are averaged across epochs** within each session-condition to produce a single value per session.
 
-4. **Time-shuffled control:** For each epoch, the behavioral labels are randomly permuted 10 times (`N_SHUFFLES = 10`), and the Lie algebra is re-fit on each permutation (same CEBRA embedding, shuffled labels). The shuffle metrics (`SR_shuffle`, `R2_shuffle`, `R2_drive_shuffle`) are averaged across the 10 realizations to reduce baseline noise.
+4. **Time-shuffled control:** For each epoch, the behavioral labels are randomly permuted 10 times (`N_SHUFFLES = 10`), and the Lie algebra is re-fit on each permutation (same CEBRA embedding, shuffled labels). The CEBRA model is **not** retrained — the embedding stays fixed, and only the OLS Lie algebra fit is repeated. This is the critical design choice: it tests whether the *temporal alignment* between the behavioral variable and the neural state matters, without confounding from re-embedding. The shuffle metrics (`SR_shuffle`, `R2_shuffle`, `R2_drive_shuffle`) are averaged across the 10 realizations to reduce baseline noise.
 
 5. **R² gate:** A session-condition is considered to have meaningful rotational structure only if $R^2_{\mathrm{true}} > R^2_{\mathrm{shuffle}}$ (total R²) **and** $R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, shuffle}}$ (drive-specific R²). The drive-specific gate is stricter and more informative.
 
@@ -176,3 +176,135 @@ There is no external behavioral drive. It assumes the neural state rotates auton
 This analysis fits an **input-driven** system:
 $$ \dot{R} = J \cdot R \cdot x_{\mathrm{drive}} + L \cdot R $$
 The behavioral variable ($x_{\mathrm{drive}}$) explicitly gates the rotation and dissipation. The generator $J$ is unconstrained during the OLS fit, allowing simultaneous capture of rotation ($J_{\mathrm{skew}}$ / imaginary eigenvalues) and dissipation (real eigenvalues of $J_{\mathrm{ols}}$). This makes it uniquely suited for studying continuous closed-loop sensorimotor integration, where external actions continuously force the neural state.
+
+---
+
+## 9. Understanding the Shuffle Control
+
+### What the shuffle actually does
+
+For each epoch, the behavioral label vector is randomly reordered via `np.random.permutation(e_l)`. For example:
+
+```
+True:     [0.2, 0.5, 0.8, 0.3, -0.1, 0.6, ...]   (time-ordered velocity)
+Shuffled: [0.6, -0.1, 0.2, 0.8, 0.5, 0.3, ...]   (random order)
+```
+
+Only the rotation predictor `U_rot = R * x_dot` changes between true and shuffle fits. Everything else is identical:
+
+| Step | True | Shuffle |
+|------|------|---------|
+| CEBRA embedding `emb` | used as-is | **identical** — CEBRA is NOT retrained |
+| `dr_dt` = `np.gradient(emb)` | computed from `emb` | **identical** |
+| `U_rot` = `emb * e_l` | true label order | `emb * e_l_shuf` ← **only difference** |
+| Leak predictor `emb` in `U` | unchanged | **identical** |
+| `J_skew` (rotation weights) | fitted to true labels | different (time alignment destroyed) |
+| `L` (leak weights) | fitted to `emb` columns | nearly identical (same `emb` columns) |
+| `ss_tot` (R² denominator) | `Σ(dr_dt - mean(dr_dt))²` | **identical** |
+
+### What this destroys vs preserves
+
+**Destroys:** The temporal/causal relationship between the behavioral variable and the neural state. If the true velocity at time *t* is 0.5 m/s and the embedding at time *t* responds specifically to that velocity, shuffling breaks this coupling.
+
+**Preserves:** The label distribution (same mean, variance, range), the CEBRA embedding, the leak term's contribution, and the total variance of `dr_dt`.
+
+### Why total R² is nearly identical between true and shuffle
+
+This is **not a bug** — it is a direct consequence of the model design. The total R² measures how well **rotation + leak** together predict `dr_dt`. In low-dimensional embeddings (e.g., 3D CEBRA), the leak term `L·R` — a 3×3 autoregressive matrix — already explains the vast majority of the derivative variance. The rotation term adds a small correction that changes the generator's *structure* (reflected in SR) but barely moves the total R² needle.
+
+**Analogy:** Adding a pinch of salt to a bowl of rice. The salt changes the flavor profile (SR detects it), but measuring the total weight of the bowl before and after (total R²) shows no difference — the rice dominates the measurement.
+
+**The meaningful metrics are SR and R²_drive**, which specifically isolate the drive-gated component.
+
+### Why 10 shuffles per epoch
+
+A single shuffle is one random pairing of labels and neural states, and can be "lucky" or "unlucky" — producing a shuffle SR that is accidentally high or low due to sampling noise. Averaging across 10 independent permutations reduces the baseline variance by a factor of ~10 and gives a stable estimate of the null distribution.
+
+---
+
+## 10. OLS as Multi-Output Regression
+
+### How it differs from ordinary single-variable regression
+
+Standard linear regression predicts one scalar outcome:
+
+$$ y = a \cdot x + b $$
+
+where $y$ is a vector of length $T$ (timepoints), $x$ is a single predictor, and $a$ is a scalar coefficient.
+
+Here the OLS solves for **N targets simultaneously**:
+
+$$ dr/dt = J \cdot (R \cdot x_{\mathrm{drive}}) + L \cdot R $$
+
+- `dr_dt` is $(T \times N)$ — one derivative time series per neuron
+- The design matrix `U` is $(T \times 2N)$ — two predictor blocks side by side
+- `weights` from `lstsq(U, dr_dt)` is $(2N \times N)$ — **a matrix, not a scalar**
+
+### Design matrix construction
+
+```
+U = [ R * x_dot  |  R ]
+     ─── N cols ──   ── N cols ──
+
+One row (timepoint t):
+
+[ r[t,1]·x[t]  r[t,2]·x[t]  ...  r[t,N]·x[t]  |  r[t,1]  r[t,2]  ...  r[t,N] ]
+ ─────────── rotation features (N) ────────────    ────── leak features (N) ─────
+```
+
+### What the weight matrix means
+
+After fitting, `weights` is a $(2N \times N)$ matrix. Extracted into blocks:
+
+```python
+J_ols = weights[:N, :]     # (N×N) — first N rows
+L     = weights[N:, :]     # (N×N) — last N rows
+```
+
+`J_ols[i, j]` means: **how much does source neuron `i` (gated by velocity `x`) contribute to the derivative of target neuron `j`?**
+
+This is fundamentally different from a scalar regression coefficient. It describes an **internal interaction graph** of the neural population — which neurons drive which others, and with what sign, in response to the behavioral variable. The skew-symmetrization step (`J_skew = 0.5*(J_ols - J_ols^T)`) then extracts the purely rotational component of this interaction graph.
+
+---
+
+## 11. CEBRA vs PCA and the Dimensionality Tradeoff
+
+### PCA: preserves variance, ignores behavior
+
+PCA finds the directions in neural state space with maximum variance:
+
+$$ \max \ \mathrm{Var}(X \cdot w), \quad \|w\| = 1 $$
+
+It does not look at behavioral labels. A dimension with large variance from heartbeat or anesthesia will be kept; a dimension with small variance that perfectly encodes velocity will be discarded.
+
+### CEBRA: preserves behaviorally relevant structure
+
+CEBRA uses contrastive learning (InfoNCE loss) to find an embedding where:
+
+- **Positive pairs** (nearby timepoints, or same behavioral context) are pulled together
+- **Negative pairs** (distant timepoints, or different behavioral context) are pushed apart
+
+```
+L_CEBRA = -log( exp(sim(z_i, z_i+)) / Σ exp(sim(z_i, z_j-)) )
+```
+
+The behavioral variable (velocity, position, or time index) **drives the training**, so the embedding is optimized to extract structure relevant to that variable — even if those dimensions have small raw variance.
+
+| | PCA | CEBRA |
+|---|---|---|
+| Input | Neural data only | Neural data + behavioral labels |
+| Optimizes | Reconstruction error | Contrastive (InfoNCE) loss |
+| Preserves | High-variance dimensions | Behaviorally relevant dimensions |
+| Nonlinear? | Linear only | Can use deep (nonlinear) networks |
+| Example failure | Keeps heart-rate artifact, drops velocity code | Keeps velocity code, drops heart-rate artifact |
+
+### The dimensionality tradeoff
+
+CEBRA compresses 80+ neurons into a 3D embedding. This concentrates rotationally relevant structure into a small latent space — which is beneficial for **detecting** rotational geometry (SR is often higher in CEBRA space than in raw space) — but it also discards degrees of freedom:
+
+- Raw space: 80+×80+ J_skew matrix → rich rotational structure, hundreds of independent components
+- CEBRA 3D: 3×3 J_skew → only 3 independent skew-symmetric components
+
+The consequence is visible in the data. R²_drive (the rotation-only variance explained over leak baseline) is often **near zero** in 3D CEBRA, not because rotation is absent — the high SR proves it is present — but because the leak term's 3×3 autoregressive matrix already captures nearly all of `dr_dt`'s variance in the compressed space. There is simply not enough residual variance left for the rotation term to explain.
+
+**To test this:** comparing CEBRA at higher embedding dimensions (e.g., 8D or 16D) should show R²_drive increasing with dimensionality, as more rotational degrees of freedom are retained. If R²_drive grows from ~0 in 3D to a significant value in 8D or 16D, it confirms that the weak R²_drive in 3D is a compression artifact, not evidence against rotational dynamics.

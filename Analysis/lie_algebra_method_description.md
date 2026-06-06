@@ -612,41 +612,81 @@ At 12+ dimensions (144 J parameters), the model can fit essentially any structur
 
 ## 12. Limitations
 
-This framework offers a geometrically interpretable window into sensorimotor neural dynamics, but it carries several limitations that should be weighed when interpreting results or planning follow-up analyses.
+This framework offers a geometrically interpretable window into sensorimotor neural dynamics, but it carries several important limitations. Some are acknowledged in the existing pipeline design; others require further development. All should be weighed when interpreting results or planning follow-up analyses, particularly in the context of publication-level claims.
 
-### 12.1 Circular reasoning risk between CEBRA embedding and Lie algebra fitting
+### 12.1 The skewness ratio is not a coordinate-invariant quantity
 
-**The concern:** CEBRA's contrastive learning (InfoNCE loss) uses the same behavioral variable $x(t)$ (e.g., velocity or position) that subsequently drives the Lie algebra model. The embedding manifold is thus *shaped in advance* by the behavioral labels. Fitting $J_{\mathrm{skew}}$ with the same $x(t)$ on this behaviorally-shaped manifold can produce high Skewness Ratios as an algorithmic artifact — the embedding geometry and the rotational fit are not independent. The question is whether the observed rotational structure reflects intrinsic neural population dynamics or the InfoNCE loss imprinting rotational topology onto the manifold.
+The decomposition $J_{\mathrm{ols}} = \frac{1}{2}(J_{\mathrm{ols}} + J_{\mathrm{ols}}^T) + \frac{1}{2}(J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$ separates a matrix into symmetric and skew-symmetric parts. However, this decomposition is only physically meaningful as "stretch vs. rotation" under an **isotropic metric** (identity inner product, i.e., whitened/orthonormal coordinates). CEBRA embeddings are neither orthogonal nor endowed with a canonical metric — after per-neuron z-scoring, the covariance is still not identity. A linear change of basis $R \to PR$ does **not** preserve skew-symmetry (skew-symmetry is not similarity-invariant): the skew component under one coordinate system can become mixed with the symmetric component under another. **The SR therefore depends on the arbitrary, uncalibrated coordinate frame produced by CEBRA**, and its biological interpretation as "fraction of the generator that is rotational" is not coordinate-independent.
+
+This is the same criticism that **Lebedev et al. (2019, *Scientific Reports*)** leveled at jPCA-based rotational dynamics claims — that rotational patterns can emerge as visualization artifacts of temporal sequencing in neural responses rather than reflecting a fundamental computational principle. **Elsayed & Cunningham (2017, *Nature Neuroscience*)** developed the tensor maximum entropy (TME) null model specifically to test whether observed population structure exceeds what is expected from simpler, already-known features (single-neuron tuning, temporal correlations, signal correlations). Both critiques apply directly to the current framework and are **not yet addressed** in the pipeline — no TME-style calibration of SR against first- and second-order moment-matched surrogates is performed.
+
+**Mitigation:** Future versions should either (i) perform SR analysis in a whitened/isotropic coordinate system, (ii) use a similarity-invariant rotational measure, or (iii) calibrate SR values against TME surrogates that preserve the marginal statistics of the data while randomizing beyond-structure correlations.
+
+### 12.2 Circular reasoning between CEBRA embedding and Lie algebra fitting
+
+**The concern — two layers:** 
+
+*Layer 1 (CEBRA label dependency):* CEBRA's contrastive learning (InfoNCE loss) uses the same behavioral variable $x(t)$ that subsequently drives the Lie algebra model. The embedding manifold is *shaped in advance* by the behavioral labels, so fitting $J_{\mathrm{skew}}$ with the same $x(t)$ on this behaviorally-shaped manifold can produce high SR as an algorithmic artifact.
+
+*Layer 2 (structural $R^2_{\mathrm{drive}}$ suppression):* Because CEBRA is trained with $x(t)$, the embedding $R$ is strongly correlated with $x$. The leak predictor block in the design matrix ($R$ alone) therefore *proxies the drive information*. The leak-only baseline $dR_{\mathrm{leak}} = LR$ absorbs variance that is behaviorally driven, artificially pushing $R^2_{\mathrm{drive}}$ toward zero. **SR is structurally inflated (Layer 1) while $R^2_{\mathrm{drive}}$ is structurally deflated (Layer 2)** — both principal metrics are biased in opposite directions by the same circularity.
 
 **Mitigations in current pipeline:**
 
 | Defense | How it helps | Residual concern |
 |---------|-------------|-----------------|
-| Time-shuffled control (Sec 9) | Destroys temporal alignment between $x(t)$ and $R(t)$ within the fixed embedding; tests whether the rotation is label-dependent | Does not rule out embedding-level artifacts — the manifold itself may have been shaped by behavioral labels during CEBRA training |
-| Raw-space analysis (Sec 1.1–1.2) | Lie algebra fit in unsmoothed, unreduced neural space — no embedding bias | Raw space has lower SR and higher noise; results may differ in magnitude but should show consistent direction |
-| Shuffle-Label CEBRA Control (Sec 9) | Retrains CEBRA on fully shuffled labels, then fits Lie algebra in the dummy embedding | Computationally expensive; planned as confirmatory analysis, not yet implemented in current pipeline |
+| Time-shuffled control (Sec 9) | Destroys temporal alignment within the fixed embedding; tests label-dependence of the Lie fit | Does not rule out embedding-level artifacts or address Layer 2 |
+| Raw-space analysis (Sec 1.1–1.2) | Lie algebra fit in unreduced neural space — no embedding bias | Raw space has lower SR and higher noise |
+| Shuffle-Label CEBRA Control (Sec 9) | Retrains CEBRA on shuffled labels, then fits Lie algebra in the dummy embedding | Computationally expensive; not yet implemented |
 
-**Comparison to standard methods:** jPCA (Churchland et al., 2012) searches for rotational dynamics in **unsupervised** PCA space — it avoids the circularity risk entirely by not using behavioral labels during dimensionality reduction, but can miss low-variance behaviorally relevant signals. CEBRA inverts this tradeoff: it recovers weak but behaviorally crucial signals at the cost of potential embedding bias.
+### 12.3 Time-shuffle null model is misspecified
 
-### 12.2 Post-hoc skew-symmetrization is not the constrained optimum
+The current shuffle uses `np.random.permutation(e_l)`, which independently randomizes the order of behavioral labels. However, head velocity $x(t)$ is **highly temporally autocorrelated** (slowly varying). The permutation produces a white-noise-like sequence whose power spectrum and autocorrelation structure differ fundamentally from the true drive. Therefore the true-vs-shuffle comparison confounds two factors: (i) loss of temporal alignment (the intended test), and (ii) destruction of the regressor's spectral/autocorrelation structure (an unintended confound). The null hypothesis is not "same distribution, random timing" — it is "different distribution, random timing."
 
-The OLS pipeline solves for an unconstrained $J_{\mathrm{ols}}$ and then extracts $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$. This yields the *skew-symmetric projection of the unconstrained optimum*, which is not guaranteed to be the best skew-symmetric matrix under the Lie algebra constraint. In rigorous Lie group dynamical systems (e.g., $SO(N)$ or $SE(N)$ models), the state is constrained *during* optimization, not post-hoc. The current approach minimizes the total prediction error, not the prediction error under the rotation-only hypothesis.
+**Correct alternatives:** Autocorrelation-preserving surrogates: circular shift, block permutation, or phase-randomized surrogates that preserve the power spectrum of $x(t)$ while destroying temporal alignment. These are **not yet implemented** in the pipeline.
 
-### 12.3 Low $R^2_{\mathrm{drive}}$ weakens causal interpretation
+### 12.4 $N_{\mathrm{SHUFFLES}} = 10$ is insufficient for statistical inference
 
-In the 3D CEBRA pipeline, $R^2_{\mathrm{drive}}$ is typically near zero — the behavioral drive explains negligible *additional* derivative variance beyond the autonomous leak term. While this can be partially attributed to compression (Sec 11.4), it remains a vulnerability: in standard input-driven dynamical systems modeling, a drive term that contributes near-zero incremental $R^2$ faces scrutiny as to whether it is genuinely the mechanism propelling the system. The current framework is better characterized as a **geometric feature extractor** (quantifying the rotational *shape* of the generator) than a **generative physical dynamics model** (predicting state trajectories from the drive).
+With 10 shuffle realizations per epoch, the minimum resolvable permutation $p$-value is approximately $1/11 \approx 0.09$ — insufficient for any standard significance threshold ($\alpha = 0.05$, let alone Bonferroni-corrected levels). The current pipeline reports paired $t$-tests between true and shuffle means, but the t-test aggregates across sessions and epochs without a formal permutation-based null distribution for the test statistic itself. Rigorous inference requires $\geq$ 500–1000 shuffle realizations per epoch, an explicit test statistic, and FDR correction across the multiple session-condition comparisons.
 
-### 12.4 Scalar drive and linear gating assumptions
+### 12.5 SR has no chance-level calibration
 
-The model $dR/dt = J_{\mathrm{skew}} \cdot R \cdot x(t) + L \cdot R$ assumes:
-- $x(t)$ is a **1D scalar** (e.g., head velocity)
-- The gating is **purely multiplicative and linear** ($R \cdot x$)
+For an $N \times N$ matrix with i.i.d. random entries (zero mean, finite variance), the expected squared SR is approximately $\mathbb{E}[\mathrm{SR}^2] \approx (N-1)/(2N)$. For $N = 3$ (3D CEBRA), this gives $\mathrm{SR}_{\mathrm{random}} \approx 0.58$. Values of SR $\approx 0.8$ (often reported as evidence for rotational structure in this pipeline) must be compared against this random baseline — and more importantly, against a baseline derived from $J_{\mathrm{ols}}$ entries that are **not i.i.d.** (they inherit correlations from the design matrix structure). The **TME null model (Elsayed & Cunningham, 2017)** provides the appropriate framework: sample surrogate data tensors that preserve first- and second-order marginal statistics, then compute the SR distribution under the null. This calibration is **not performed** in the current pipeline.
 
-Real sensorimotor integration is high-dimensional and nonlinear. A1 and PMC receive multidimensional proprioceptive feedback, top-down predictive error signals, and corollary discharge — not a single kinematic scalar. The scalar linear gating assumption is a deliberate simplification for interpretability, but it may miss structure (e.g., nonlinear gain modulation, multi-input interactions) that higher-capacity models would capture.
+### 12.6 The 3D rotational plane is a mathematical necessity, not necessarily a discovery
 
-### 12.5 Lack of explicit noise and uncertainty modeling
+A $3 \times 3$ skew-symmetric matrix has eigenvalues $\{0, \pm i\omega\}$ **by construction** — the presence of one purely imaginary conjugate pair (i.e., one rotational plane) in a 3D embedding is a mathematical inevitability of fitting any non-zero $J_{\mathrm{skew}}$, not evidence that the brain uses a single rotational plane for sensorimotor coding. Combined with 12.1 (CEBRA shapes the embedding to align behavior with the dominant variance directions), finding "exactly one rotational plane in 3D" has reduced information content relative to what the dimensionality alone predicts. This is noted by **Shinn (2023, *PNAS*)** in a related context: patterns that emerge from dimensionality-reduced data may not faithfully represent the underlying generative process — "phantom oscillations" can appear as artifacts of the reduction and smoothing pipeline.
 
-The pipeline uses deterministic finite differences (`np.gradient`) and deterministic OLS regression. Neural spiking data has substantial Poisson noise and trial-to-trial variability. The gold standard in modern computational neuroscience (GPFA, LFADS, Kalman filtering variants) uses **probabilistic generative models** that explicitly separate process noise (uncertainty in latent state evolution) from observation noise (stochastic mapping from latent state to spikes). Computing derivatives directly on binned spike counts or embedding trajectories amplifies high-frequency noise, and OLS fits on noisy derivatives inherit this noise.
+### 12.7 Low $R^2_{\mathrm{drive}}$ weakens causal interpretation
+
+In the 3D CEBRA pipeline, $R^2_{\mathrm{drive}}$ is typically near zero — the behavioral drive explains negligible *additional* derivative variance beyond the autonomous leak term. While this can be partially attributed to compression (Sec 11.4) and to Layer 2 of the circularity (Sec 12.2), it remains a vulnerability: in standard input-driven dynamical systems modeling, a drive term that contributes near-zero incremental $R^2$ cannot be claimed as the mechanism propelling the system. The current framework is better characterized as a **geometric feature extractor** (quantifying the rotational *shape* of the generator) than a **generative physical dynamics model** (predicting state trajectories from the drive). The manuscript's front sections (1–4) should be read with this caveat in mind — the framing as "the motor drive actively steers the neural state" is the hypothesis being interrogated, not the conclusion established.
+
+### 12.8 Scalar drive and linear gating assumptions
+
+The model assumes a 1D scalar behavioral drive $x(t)$ with purely multiplicative linear gating ($R \cdot x$). Real sensorimotor integration is high-dimensional and nonlinear — A1 and PMC receive multidimensional proprioceptive feedback, top-down predictive error signals, and corollary discharge. The scalar linear gating is a deliberate simplification for interpretability, but may miss structure that higher-capacity models would capture.
+
+### 12.9 Kinematic confound between Tracking and Playback
+
+If the animal moves less during Playback than during Tracking (a common confound in replay paradigms), the dynamic range of $x(t)$ differs mechanically between conditions, producing lower drive-related metrics in Playback **independently of any neural computation**. The pipeline does not currently report or control for the velocity distributions in the two conditions. An observed "Tracking > Playback" difference cannot be attributed to neural mechanisms unless the behavioral input distributions are first shown to be comparable, or the analysis is covariate-corrected for movement magnitude.
+
+### 12.10 Design matrix collinearity and identifiability
+
+The design matrix $U = [R \cdot x \mid R]$ contains two predictor blocks that become **highly collinear** when $x(t)$ varies slowly relative to the temporal dynamics of $R$. Under such conditions, the OLS solution for $J$ and $L$ is ill-conditioned — the variance of $J_{\mathrm{ols}}$ entries is inflated, and the separation between rotation and leak components becomes unreliable. The current pipeline uses `lstsq(..., rcond=None)` without regularization, and does not report condition numbers, variance inflation factors, or ridge parameter sweeps. The stability of $J_{\mathrm{skew}}$ — on which the entire rotational interpretation rests — is not quantified.
+
+### 12.11 Eigenvalue interpretation conflates the generator with the system dynamics matrix
+
+The true instantaneous dynamics operator is the **time-varying** matrix $x(t)J_{\mathrm{skew}} + L$. When $x(t)$ has mean near zero (velocity oscillates around zero), the mean rotational contribution is zero — the system spends equal time rotating in opposite directions. Computing eigenvalues of the **static coupling matrix** $J_{\mathrm{ols}}$ and calling $|\mathrm{Imag}|$ the "neural oscillation frequency" ignores the fact that this frequency is gated on and off by $x(t)$. Additionally, $L$ is excluded from the "rotation" label yet included in the "dissipation" interpretation — an internal inconsistency in the eigenvalue-level narrative.
+
+### 12.12 Lack of explicit noise and uncertainty modeling
+
+The pipeline uses deterministic finite differences and OLS. Neural spiking has substantial Poisson noise and trial-to-trial variability. Modern standards (GPFA, LFADS, Kalman filtering) use probabilistic generative models separating process and observation noise. Computing derivatives on binned spike counts or embedding trajectories amplifies high-frequency noise, and OLS fits on noisy derivatives inherit this noise. Single-subject, single-session CEBRA training provides no estimate of embedding uncertainty or its propagation into downstream Lie metrics.
+
+### 12.13 Gap between mathematical metrics and biological mechanism claims
+
+The document (particularly Section 4) interprets $|\mathrm{Real}|$ eigenvalues as "a population-level readout of PV+ disynaptic inhibitory motifs (Schneider et al., 2014)." This is a large inferential leap. The pipeline contains **no direct evidence** linking CEBRA-space OLS eigenvalue magnitudes to specific cell types, synaptic mechanisms, reafferent-vs-exafferent contrast, or causal manipulations. The forward model / sensory attenuation framework (Wolpert 1995, Keller & Mrsic-Flogel 2018, Eliades & Wang 2008) provides **motivational scaffolding** — none of the computed metrics constitute a **direct test** of predictive updating or sensory attenuation. The document's claims should be read as: the observed geometric signatures are *consistent with* (not *evidence for*) these biological mechanisms.
+
+### 12.14 Single-subject, single-seed reporting
+
+The current results are from one animal (SKIEUR). Session-level paired t-tests do not support population-level inference, and the small number of sessions challenges the normality assumption of the t-test. CEBRA is trained once per session with a single random seed, so all downstream metrics inherit the variance of that single stochastic realization. Multi-animal hierarchical modeling, or explicit single-case-study framing, and multi-seed CEBRA retraining with reported metric distributions are needed for publication-level claims.
 
 ---
 
@@ -715,22 +755,28 @@ where $Q$ is the process noise covariance and $f$ is a learned or fixed observat
 
 2. **Eliades, S.J. and Wang, X.** (2008) 'Neural substrates of vocalization-feedback monitoring in primate auditory cortex', *Nature*, 453(7198), pp. 1102–1106. doi:10.1038/nature06910.
 
-3. **Keller, G.B. and Mrsic-Flogel, T.D.** (2018) 'Predictive processing: a canonical cortical computation', *Neuron*, 100(2), pp. 424–435. doi:10.1016/j.neuron.2018.10.003.
+3. **Elsayed, G.F. and Cunningham, J.P.** (2017) 'Structure in neural population recordings: an expected byproduct of simpler phenomena?', *Nature Neuroscience*, 20(9), pp. 1310–1318. doi:10.1038/nn.4617.
 
-4. **Kobak, D., Brendel, W., Constantinidis, C., Feierstein, C.E., Kepecs, A., Mainen, Z.F., Qi, X.L., Romo, R., Uchida, N. and Machens, C.K.** (2016) 'Demixed principal component analysis of neural population data', *eLife*, 5, p. e10989. doi:10.7554/eLife.10989.
+4. **Keller, G.B. and Mrsic-Flogel, T.D.** (2018) 'Predictive processing: a canonical cortical computation', *Neuron*, 100(2), pp. 424–435. doi:10.1016/j.neuron.2018.10.003.
 
-5. **Nelson, A., Schneider, D.M. and Mooney, R.** (2013) 'A circuit for motor cortical modulation of auditory cortical activity', *Journal of Neuroscience*, 33(36), pp. 14342–14353. doi:10.1523/JNEUROSCI.0935-13.2013.
+5. **Kobak, D., Brendel, W., Constantinidis, C., Feierstein, C.E., Kepecs, A., Mainen, Z.F., Qi, X.L., Romo, R., Uchida, N. and Machens, C.K.** (2016) 'Demixed principal component analysis of neural population data', *eLife*, 5, p. e10989. doi:10.7554/eLife.10989.
 
-6. **Schneider, D.M. and Mooney, R.** (2018) 'How movement modulates hearing', *Annual Review of Neuroscience*, 41, pp. 553–572. doi:10.1146/annurev-neuro-072116-031215.
+6. **Lebedev, M.A., Ossadtchi, A., Mill, N.A., Urpí, N.A., Cervera, M.R. and Nicolelis, M.A.L.** (2019) 'Analysis of neuronal ensemble activity reveals the pitfalls and shortcomings of rotation dynamics', *Scientific Reports*, 9, p. 18978. doi:10.1038/s41598-019-54760-4.
 
-7. **Schneider, D.M., Nelson, A. and Mooney, R.** (2014) 'A synaptic and circuit basis for corollary discharge in the auditory cortex', *Nature*, 513(7517), pp. 189–194. doi:10.1038/nature13724.
+7. **Nelson, A., Schneider, D.M. and Mooney, R.** (2013) 'A circuit for motor cortical modulation of auditory cortical activity', *Journal of Neuroscience*, 33(36), pp. 14342–14353. doi:10.1523/JNEUROSCI.0935-13.2013.
 
-8. **Schneider, S., Lee, J.H. and Mathis, M.W.** (2023) 'Learnable latent embeddings for joint behavioural and neural analysis', *Nature*, 617(7960), pp. 360–368. doi:10.1038/s41586-023-06031-6.
+8. **Schneider, D.M. and Mooney, R.** (2018) 'How movement modulates hearing', *Annual Review of Neuroscience*, 41, pp. 553–572. doi:10.1146/annurev-neuro-072116-031215.
 
-9. **Shamma, S., Patel, P., Mukherjee, S., Marion, G., Khalighinejad, B., Han, C., Herrero, J., Bickel, S., Mehta, A. and Mesgarani, N.** (2021) 'Learning speech production and perception through sensorimotor interactions', *Cerebral Cortex Communications*, 2(1), p. tgaa091. doi:10.1093/texcom/tgaa091.
+9. **Schneider, D.M., Nelson, A. and Mooney, R.** (2014) 'A synaptic and circuit basis for corollary discharge in the auditory cortex', *Nature*, 513(7517), pp. 189–194. doi:10.1038/nature13724.
 
-10. **Shenoy, K.V., Sahani, M. and Churchland, M.M.** (2013) 'Cortical control of arm movements: a dynamical systems perspective', *Annual Review of Neuroscience*, 36, pp. 337–359. doi:10.1146/annurev-neuro-062111-150509.
+10. **Schneider, S., Lee, J.H. and Mathis, M.W.** (2023) 'Learnable latent embeddings for joint behavioural and neural analysis', *Nature*, 617(7960), pp. 360–368. doi:10.1038/s41586-023-06031-6.
 
-11. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.
+11. **Shamma, S., Patel, P., Mukherjee, S., Marion, G., Khalighinejad, B., Han, C., Herrero, J., Bickel, S., Mehta, A. and Mesgarani, N.** (2021) 'Learning speech production and perception through sensorimotor interactions', *Cerebral Cortex Communications*, 2(1), p. tgaa091. doi:10.1093/texcom/tgaa091.
 
-12. **Siriwardena, Y.M., Marion, G. and Shamma, S.** (2022) 'The MirrorNet: learning audio synthesizer controls inspired by sensorimotor interaction', *ICASSP 2022 — IEEE International Conference on Acoustics, Speech and Signal Processing*, pp. 946–950. doi:10.1109/ICASSP43922.2022.9747358.
+12. **Shenoy, K.V., Sahani, M. and Churchland, M.M.** (2013) 'Cortical control of arm movements: a dynamical systems perspective', *Annual Review of Neuroscience*, 36, pp. 337–359. doi:10.1146/annurev-neuro-062111-150509.
+
+13. **Shinn, M.** (2023) 'Phantom oscillations in principal component analysis', *Proceedings of the National Academy of Sciences*, 120(48). doi:10.1073/pnas.2311420120.
+
+14. **Siriwardena, Y.M., Marion, G. and Shamma, S.** (2022) 'The MirrorNet: learning audio synthesizer controls inspired by sensorimotor interaction', *ICASSP 2022 — IEEE International Conference on Acoustics, Speech and Signal Processing*, pp. 946–950. doi:10.1109/ICASSP43922.2022.9747358.
+
+15. **Wolpert, D.M., Ghahramani, Z. and Jordan, M.I.** (1995) 'An internal model for sensorimotor integration', *Science*, 269(5232), pp. 1880–1882. doi:10.1126/science.7569931.

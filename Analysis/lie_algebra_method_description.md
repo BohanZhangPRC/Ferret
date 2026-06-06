@@ -322,7 +322,7 @@ This is the foundational reason why the Lie algebra rotational dynamics fit succ
 
 ---
 
-### 11.2 CEBRA vs jPCA (behavior-driven vs variance-driven rotation) (behavior-driven vs variance-driven rotation)
+### 11.2 CEBRA vs jPCA (behavior-driven vs variance-driven rotation)
 
 **jPCA** is an extension of PCA specifically designed for rotational dynamics. It works in two steps:
 
@@ -335,29 +335,26 @@ The critical weakness is **Step 1**. If the behaviorally relevant signal does no
 
 ---
 
-### 11.3 CEBRA vs dPCA (preserving topology vs flattening manifolds)
+### 11.3 dPCA (Demixed PCA — linear supervised dimensionality reduction)
 
-**dPCA (Demixed PCA)** is also supervised — it uses behavioral labels to find "demixed" axes (e.g., X-axis = pure position, Y-axis = pure time). But it achieves this via **linear orthogonal decomposition**: it forces the latent dimensions to be mutually orthogonal and purely linear combinations of the input.
+dPCA (Kobak et al., 2016) is a **linear supervised dimensionality reduction** method. It uses task labels (stimulus, decision, time) to find "demixed" low-dimensional axes — e.g., the first dPC isolates stimulus-dependent variance, the second isolates decision-dependent variance, and so on. Unlike standard PCA (unsupervised, variance-maximizing), dPCA incorporates the experimental design into the decomposition.
 
-The problem: real neural manifolds are often **curved**. Neurons encode continuous variables through phase differences, forming rings, tori, or other curved topologies. dPCA takes this curved manifold and **flattens it into orthogonal straight lines**. Once the curvature is destroyed:
+**Why it is not used in place of CEBRA here:** dPCA achieves demixing via **regularized linear regression** — the latent axes are constrained to be orthogonal linear combinations of the input neurons. This linearity has two consequences relevant to this pipeline:
 
-- The rotational structure of the dynamics is lost
-- Lie algebra fitting can no longer detect a clean $J_{\mathrm{skew}}$
-- The skewness ratio drops toward noise levels
+1. **It preserves only linear structure.** Real neural manifolds encoding continuous variables (velocity, position) are often curved — neurons form rings, tori, or helical trajectories through phase-coded representations. A purely linear decomposition will not fully capture this curvature, and the rotational geometry that Lie algebra fitting relies on may be weakened or distorted.
 
-**CEBRA's key advantage for Lie algebra analysis** is that its loss functions (Euclidean or cosine distance) **preserve geometric curvature and topology**. A ring-shaped neural code remains a ring in the embedding; a toroidal code remains a torus. This is the rigid prerequisite for fitting rotational ($J_{\mathrm{skew}}$) dynamics — you cannot detect rotation on a flattened manifold any more than you can detect the curvature of a crumpled map.
+2. **It is still dimensionality reduction.** dPCA reduces from N neurons to K dPCs — it is directly in the same category as PCA, jPCA, and CEBRA-embedding for the purpose of building a low-dimensional manifold. The key difference is *what* it optimizes for (demixed variance partitioning) and *how* (linear orthogonal axes).
 
-**Summary of the three-way comparison:**
+**Comparison to CEBRA for Lie algebra analysis:**
 
-| | CEBRA | jPCA | dPCA |
-|---|---|---|---|
-| **Supervision** | Behavioral labels | None (PCA step) | Behavioral labels |
-| **Nonlinear?** | Yes | No | No |
-| **Signal extraction** | Precise — pulls out behavior-relevant structure regardless of variance rank | Blind — only keeps top-variance PCs; behavior signal may be lost | Moderate — uses labels but limited to linear decomposition |
-| **Topology preservation** | Yes — preserves rings, tori, curvature | Partial — PCA preserves linear structure but discards nonlinear curvature | **No** — flattens curved manifolds into orthogonal axes, destroying rotation geometry |
-| **Why it works or fails for Lie algebra** | **Best suited:** extracts the sensorimotor manifold while preserving the continuous geometry needed for rotational dynamics | **Fails** when behavior signal has low raw variance | **Fails** because flattened manifolds have no rotational structure to detect |
+| | CEBRA | dPCA |
+|---|---|---|
+| **Reduction type** | Nonlinear (deep network) | Linear (regularized regression) |
+| **Supervision** | Behavioral labels (velocity, position, time) | Task parameter labels |
+| **Topology preservation** | Yes — preserves rings, tori, curved manifolds | Partial — linear transformation cannot reproduce nonlinear curvature |
+| **Suitability for Lie algebra** | Excellent — extracts behaviorally relevant manifold without distorting its geometry | Limited — linear axes may not capture the full rotational structure of curved sensorimotor manifolds |
 
-CEBRA is currently the only method that simultaneously achieves **precision filtering of behaviorally relevant signals** and **faithful preservation of continuous geometric topology** — the two necessary conditions for fitting interpretable Lie algebra rotational dynamics.
+**dPCA can complement this pipeline as a downstream analysis:** after CEBRA embedding and Lie algebra fitting, dPCA could be applied to the raw neural data to quantify what fraction of total population variance is explained by velocity vs. position vs. condition. This would enrich the interpretation without replacing CEBRA as the preprocessing step.
 
 ---
 

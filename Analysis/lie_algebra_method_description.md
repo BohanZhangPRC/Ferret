@@ -267,28 +267,28 @@ This is fundamentally different from a scalar regression coefficient. It describ
 
 ---
 
-## 11. CEBRA vs PCA and the Dimensionality Tradeoff
+## 11. CEBRA vs PCA / jPCA / dPCA and the Dimensionality Tradeoff
 
-### PCA: preserves variance, ignores behavior
+The choice of dimensionality reduction method and embedding dimension fundamentally determines what dynamical structure can be observed. This section explains why CEBRA at 3D is specifically chosen over alternatives, and what would happen at different embedding sizes.
 
-PCA finds the directions in neural state space with maximum variance:
+---
+
+### 11.1 CEBRA vs PCA
+
+**PCA** finds directions in neural state space with maximum variance:
 
 $$ \max \ \mathrm{Var}(X \cdot w), \quad \|w\| = 1 $$
 
-It does not look at behavioral labels. A dimension with large variance from heartbeat or anesthesia will be kept; a dimension with small variance that perfectly encodes velocity will be discarded.
+It does not look at behavioral labels. A dimension with large variance from global arousal or reward expectation will dominate; a dimension with small raw variance that perfectly encodes velocity may be discarded entirely — shuffled into the 15th or 20th principal component and lost.
 
-### CEBRA: preserves behaviorally relevant structure
+**CEBRA** uses contrastive learning (InfoNCE loss):
 
-CEBRA uses contrastive learning (InfoNCE loss) to find an embedding where:
+$$ L_{\mathrm{CEBRA}} = -\log \frac{\exp(\mathrm{sim}(z_i, z_i^+))}{\sum_j \exp(\mathrm{sim}(z_i, z_j^-))} $$
 
-- **Positive pairs** (nearby timepoints, or same behavioral context) are pulled together
-- **Negative pairs** (distant timepoints, or different behavioral context) are pushed apart
+- **Positive pairs** (nearby timepoints or same behavioral context) are pulled together
+- **Negative pairs** (distant timepoints or different behavioral context) are pushed apart
 
-```
-L_CEBRA = -log( exp(sim(z_i, z_i+)) / Σ exp(sim(z_i, z_j-)) )
-```
-
-The behavioral variable (velocity, position, or time index) **drives the training**, so the embedding is optimized to extract structure relevant to that variable — even if those dimensions have small raw variance.
+The behavioral variable (velocity, position) **drives the training**. CEBRA nonlinearly reshapes the embedding to extract structure relevant to that variable — even if the relevant signal has tiny raw variance (e.g., raw-space R²_drive ≈ 0.0002). It works like a scalpel: regardless of how weak the tracking signal is in the raw neural code, CEBRA isolates it into a low-dimensional manifold.
 
 | | PCA | CEBRA |
 |---|---|---|
@@ -297,14 +297,102 @@ The behavioral variable (velocity, position, or time index) **drives the trainin
 | Preserves | High-variance dimensions | Behaviorally relevant dimensions |
 | Nonlinear? | Linear only | Can use deep (nonlinear) networks |
 | Example failure | Keeps heart-rate artifact, drops velocity code | Keeps velocity code, drops heart-rate artifact |
+| Topology | May scramble manifold curvature | Preserves geometric curvature and topology |
 
-### The dimensionality tradeoff
+---
 
-CEBRA compresses 80+ neurons into a 3D embedding. This concentrates rotationally relevant structure into a small latent space — which is beneficial for **detecting** rotational geometry (SR is often higher in CEBRA space than in raw space) — but it also discards degrees of freedom:
+### 11.2 CEBRA vs jPCA (behavior-driven vs variance-driven rotation)
 
-- Raw space: 80+×80+ J_skew matrix → rich rotational structure, hundreds of independent components
-- CEBRA 3D: 3×3 J_skew → only 3 independent skew-symmetric components
+**jPCA** is an extension of PCA specifically designed for rotational dynamics. It works in two steps:
 
-The consequence is visible in the data. R²_drive (the rotation-only variance explained over leak baseline) is often **near zero** in 3D CEBRA, not because rotation is absent — the high SR proves it is present — but because the leak term's 3×3 autoregressive matrix already captures nearly all of `dr_dt`'s variance in the compressed space. There is simply not enough residual variance left for the rotation term to explain.
+1. **PCA:** Reduce to top K principal components (variance-maximizing)
+2. **Skew-symmetric fit:** Fit an autonomous rotational system $\dot{x} = M_{\mathrm{skew}} \cdot x$ in the PCA-reduced space
 
-**To test this:** comparing CEBRA at higher embedding dimensions (e.g., 8D or 16D) should show R²_drive increasing with dimensionality, as more rotational degrees of freedom are retained. If R²_drive grows from ~0 in 3D to a significant value in 8D or 16D, it confirms that the weak R²_drive in 3D is a compression artifact, not evidence against rotational dynamics.
+The critical weakness is **Step 1**. If the behaviorally relevant signal does not dominate the raw variance — which is common when global state variables (arousal, anesthesia depth, reward) fluctuate strongly — it will be submerged in the discarded PCA dimensions before jPCA ever sees it. jPCA's rotational fit then operates on dimensions dominated by non-behavioral variance, and the tracking-related rotation may be entirely invisible.
+
+**CEBRA avoids this entirely.** Because the behavioral label drives the embedding from the start, CEBRA extracts the sensorimotor manifold regardless of its variance rank in raw neural space. This is why CEBRA-embedded Lie analysis (Sections 1.3–1.4) often shows higher and cleaner rotational structure than the raw-space analysis (Sections 1.1–1.2).
+
+---
+
+### 11.3 CEBRA vs dPCA (preserving topology vs flattening manifolds)
+
+**dPCA (Demixed PCA)** is also supervised — it uses behavioral labels to find "demixed" axes (e.g., X-axis = pure position, Y-axis = pure time). But it achieves this via **linear orthogonal decomposition**: it forces the latent dimensions to be mutually orthogonal and purely linear combinations of the input.
+
+The problem: real neural manifolds are often **curved**. Neurons encode continuous variables through phase differences, forming rings, tori, or other curved topologies. dPCA takes this curved manifold and **flattens it into orthogonal straight lines**. Once the curvature is destroyed:
+
+- The rotational structure of the dynamics is lost
+- Lie algebra fitting can no longer detect a clean $J_{\mathrm{skew}}$
+- The skewness ratio drops toward noise levels
+
+**CEBRA's key advantage for Lie algebra analysis** is that its loss functions (Euclidean or cosine distance) **preserve geometric curvature and topology**. A ring-shaped neural code remains a ring in the embedding; a toroidal code remains a torus. This is the rigid prerequisite for fitting rotational ($J_{\mathrm{skew}}$) dynamics — you cannot detect rotation on a flattened manifold any more than you can detect the curvature of a crumpled map.
+
+**Summary of the three-way comparison:**
+
+| | CEBRA | jPCA | dPCA |
+|---|---|---|---|
+| **Supervision** | Behavioral labels | None (PCA step) | Behavioral labels |
+| **Nonlinear?** | Yes | No | No |
+| **Signal extraction** | Precise — pulls out behavior-relevant structure regardless of variance rank | Blind — only keeps top-variance PCs; behavior signal may be lost | Moderate — uses labels but limited to linear decomposition |
+| **Topology preservation** | Yes — preserves rings, tori, curvature | Partial — PCA preserves linear structure but discards nonlinear curvature | **No** — flattens curved manifolds into orthogonal axes, destroying rotation geometry |
+| **Why it works or fails for Lie algebra** | **Best suited:** extracts the sensorimotor manifold while preserving the continuous geometry needed for rotational dynamics | **Fails** when behavior signal has low raw variance | **Fails** because flattened manifolds have no rotational structure to detect |
+
+CEBRA is currently the only method that simultaneously achieves **precision filtering of behaviorally relevant signals** and **faithful preservation of continuous geometric topology** — the two necessary conditions for fitting interpretable Lie algebra rotational dynamics.
+
+---
+
+### 11.4 What happens at different embedding dimensions?
+
+The current pipeline uses `CEBRA_EMBEDDING_DIM = 3`. This choice has specific mathematical and physical consequences.
+
+#### 3D: the minimal sufficient embedding for a 1D continuous variable
+
+A 1D continuous behavioral variable (e.g., horizontal velocity or position) has an intrinsic manifold that is topologically a **circle** (for cyclic position/frequency) or a **line segment** (for bounded velocity/position ranges). The minimal embedding that can fully contain a 2D rotational plane — one complex-conjugate eigenvalue pair — is **3 dimensions** (2 for the rotation plane + 1 for drift/leak orthogonal to it).
+
+In 3D, the $J$ matrix is 3×3 with 9 parameters, and mathematically supports at most **1 rotational plane** (one pair of conjugate complex eigenvalues). This is the cleanest setting: the single rotation maps directly to the behavioral drive, with minimal confounding.
+
+**Advantages of 3D:**
+- Physically interpretable — the rotation can be visualized as a single plane
+- Minimal overfitting risk — 9 J parameters + 9 L parameters = 18 total
+- Rotation is "concentrated" — SR is typically at its highest because CEBRA forces all behaviorally relevant structure into 3 dimensions
+- The leak term's 3×3 autoregressive matrix can exhaustively model simple autonomous dynamics
+
+**Disadvantages:**
+- R²_drive is often near zero (as observed) because 3 dimensions leave little residual variance beyond what the leak term captures
+- Any secondary oscillatory signals (breathing, licking frequency, pupil fluctuations) are squeezed out or merged with the primary drive
+
+#### 6D–8D: multiple rotational planes emerge
+
+With 6 or 8 dimensions, $J$ becomes 36–64 parameters. This supports **2–4 independent rotational planes** (pairs of complex-conjugate eigenvalues), each potentially at a different frequency.
+
+**What you would likely observe:**
+
+1. **Multiple rotational planes:** The primary plane remains velocity/position-driven. Secondary planes may capture other oscillatory behavioral signals — breathing rhythm, whisking, licking — that are partially correlated with the primary drive but have distinct frequencies.
+
+2. **R² increases (both true and shuffle):** More parameters = better fit. Total R² will rise, but so will shuffle R². The gap between them (R²_drive) may or may not widen.
+
+3. **Overfitting risk:** At higher dimensions, the model can fit noise structure into its rotational planes. This makes the **R²_drive gate** (true > shuffle for the drive-specific component) more important, not less. You must verify that the rotation you detect is beyond what random label permutations would produce.
+
+4. **SR dilution:** In 3D, CEBRA forces all behaviorally relevant structure into those 3 dimensions, concentrating the rotational signal (SR often > 0.8). In higher dimensions, the extra dimensions are dominated by non-rotational drift or noise, and the overall SR — averaged across all dimensions — will drop, even though the rotational planes themselves remain strong.
+
+#### 12D+: diminishing returns and noise amplification
+
+At 12+ dimensions (144 J parameters), the model can fit essentially any structure in the data. The risk becomes:
+
+- Shuffle R² catches up to true R² as noise-fitting capacity increases
+- Eigenvalue spectra become diffuse and hard to interpret
+- Tracking vs. Playback differences may be swamped by high-dimensional noise
+- The elegant geometric interpretation of J_skew (a single rotational plane gated by behavior) breaks down into a tangle of weakly rotating components
+
+**Practical recommendation:** 3D is the right setting for establishing the existence and strength of the primary rotational structure. If R²_drive ≈ 0 in 3D (as currently observed), testing at 6D or 8D can determine whether this is a compression artifact or a genuine feature of the neural dynamics. If R²_drive remains near zero even at 8D, the rotational structure is real but fundamentally small in magnitude relative to the autonomous leak dynamics — a meaningful scientific result in its own right.
+
+---
+
+### 11.5 The dimensionality tradeoff — summary
+
+| Dimension | J parameters | Rotational planes | SR | R²_drive | Overfitting risk | Interpretability |
+|-----------|-------------|-------------------|-----|----------|-----------------|-----------------|
+| **3D** | 9 | 1 | Highest | ~0 | Minimal | Best — single rotation plane, directly visualizable |
+| **6–8D** | 36–64 | 2–4 | Moderate | May rise | Moderate — need strict R²_drive gate | Good — primary + secondary oscillatory modes |
+| **12D+** | 144+ | Many | Diluted | May rise further | High — noise planes can mimic rotation | Poor — diffuse eigenvalue spectra |
+
+**The key insight:** 3D CEBRA's R²_drive ≈ 0 (with high SR) is not a failure — it is the expected behavior when a minimal embedding concentrates rotational structure into few parameters, leaving the leak term dominant. This is analogous to compressing a high-resolution image: the essential shape (SR) is preserved, but the fine-grained variance (R²_drive) is lost to compression. Higher embedding dimensions can recover this variance at the cost of interpretability and increased overfitting risk.

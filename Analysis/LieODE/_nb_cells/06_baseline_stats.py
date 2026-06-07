@@ -64,8 +64,8 @@ if baseline_df is not None:
     sns.barplot(data=baseline_df.melt(
         id_vars=["Condition"],
         value_vars=["R2_drive", "R2_drive_shuffle"],
-        var_name="Type", value_name="R2_drive"),
-        x="Condition", y="R2_drive", hue="Type", ax=axes[1],
+        var_name="Type", value_name="Value"),
+        x="Condition", y="Value", hue="Type", ax=axes[1],
         palette={"R2_drive": "#440154", "R2_drive_shuffle": "#B2B2B2"})
     axes[1].set_title("R2_drive (True vs Shuffle)")
     axes[1].legend(fontsize=5)

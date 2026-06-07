@@ -172,13 +172,13 @@ $$\mathrm{SR} = \mathbb{E}_{u \sim p(u)}\left[\frac{\|J(u)\|_F}{\|J(u)\|_F + \|L
 
 where the expectation is taken over the drive distribution. This **per-sample averaging** (compute SR at each sampled drive, then average) is essential: a successful model learns $w_k(u) \approx -w_k(-u)$ (rotation direction follows velocity sign), so the matrix average $\mathbb{E}_u[J(u)] \approx 0$ would cancel out. Per-sample averaging avoids this cancellation artefact.
 
-**Two variants are reported:**
+**Three variants are reported** (all computed per-sample, then averaged):
 
 | Variant | Drive distribution | Purpose |
 |---------|-------------------|---------|
-| **Random-drive diagnostic** | $u \sim \mathcal{N}(0, I)$ | Diagnostic; comparable across all sessions without data access |
-| **Empirical pooled SR** | $u$ sampled from the actual pooled TR+PB drive distribution | Primary metric; reflects the model's operating regime |
-| **Condition-specific SR** | $u$ sampled separately from TR and PB drive distributions | Tests whether Tracking specifically enhances rotational structure |
+| **Random-drive diagnostic** | $u \sim \mathcal{N}(0, I)$ | Diagnostic; comparable across all sessions without data access. Computed by `get_generator_matrices()`. |
+| **Condition-specific SR** ($SR_{\mathrm{Tracking}}$, $SR_{\mathrm{Playback}}$) | $u$ sampled separately from each condition's empirical velocity distribution, standardised with the **pooled** TR+PB mean and std (matching training) | Tests whether Tracking specifically enhances rotational structure over Playback. Per-condition, per-seed, then averaged. |
+| **Empirical pooled SR** | Arithmetic mean of the two condition-specific SRs: $\frac{1}{2}(SR_{\mathrm{Tracking}} + SR_{\mathrm{Playback}})$, computed per session | Primary session-level metric; reflects the model's operating regime under both conditions equally. Note: this is the mean-of-means, not SR computed from a single pooled-drive sample — the two are close but not identical because SR is nonlinear in the drive and conditions may have unequal sample counts. |
 
 **Key difference from the two-stage pipeline**: the two-stage SR is $\|J_{\mathrm{skew}}\| / \|J_{\mathrm{ols}}\|$, computed from a single post-hoc matrix. The E2E SR is a **distributional expectation** over the drive-dependent $J(u_t)$, reflecting the fact that the generator is not a single matrix but a function of behavioural state.
 
@@ -220,7 +220,7 @@ The primary null control for the E2E pipeline: the trained encoder and generator
 
 **This is the correct null**: same distribution, same autocorrelation, random timing — exactly the improvement over permutation shuffles recommended in `lie_algebra_method_description.md` §12.3.
 
-$N_{\mathrm{SHUFFLES}} = 50$ realisations per epoch (screening-level; $\geq 500$ recommended for formal permutation inference). Reported as $R^2_{\mathrm{drive, shuffle}}$ alongside the true $R^2_{\mathrm{drive}}$.
+$N_{\mathrm{SHUFFLES}} = 50$ realisations per epoch (screening-level; $\geq 500$ recommended for formal permutation inference). For computational efficiency, the shuffle null uses $n_{\mathrm{windows}} = 5$ (vs. 20 for the true $R^2_{\mathrm{drive}}$) — each shuffle requires a full per-window encode + rollout. Reported as $R^2_{\mathrm{drive, shuffle}}$ alongside the true $R^2_{\mathrm{drive}}$.
 
 The E2E gate is: $R^2_{\mathrm{drive, true}} > R^2_{\mathrm{drive, shuffle}}$ at the primary horizon.
 

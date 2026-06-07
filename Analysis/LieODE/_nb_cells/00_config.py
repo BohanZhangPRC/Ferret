@@ -43,7 +43,7 @@ CEBRA_ARCH = "offset10-model" if CEBRA_DISTANCE == "cosine" else "offset10-model
 CEBRA_EMBEDDING_DIM = 3
 TAU_SHIFT = 6
 LIE_METHOD = "lstsq"
-MIN_EPOCH_DUR = 2.0
+MIN_EPOCH_DUR = 0.5             # minimum macro-epoch duration (s); 0.5s = 100 bins at dt=0.005
 NAS = r"\\129.199.81.18\data5\eTheremin"
 
 # --- New config for end-to-end pipeline ---

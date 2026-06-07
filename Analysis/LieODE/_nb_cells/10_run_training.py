@@ -32,13 +32,6 @@ for idx in tqdm(train_indices, desc="Joint Training"):
     n_neurons = n_data_session.shape[0]
     d_drive = len(DRIVE_KEYS)
 
-    # ---- Pre-compute pooled TR+PB standardization (matching training) ----
-    all_v = np.concatenate([
-        f_df[f_df["Condition"] == val]["Velocity_x"].values
-        for val in [0.0, 1.0]])
-    mu_pool, std_pool = np.mean(all_v), np.std(all_v)
-    if std_pool < 1e-9: std_pool = 1.0
-
     # ---- Multi-scale R2_drive accumulator (averaged across seeds) ----
     seed_r2d = {cond: {s: [] for s in VAL_ROLLOUT_LENS}
                 for cond in ["Tracking", "Playback"]}
@@ -85,17 +78,32 @@ for idx in tqdm(train_indices, desc="Joint Training"):
                 seed_r2d_sh[cond_name][wlen].append(
                     r2d_sh_dict.get(wlen, float('nan')))
 
-        # ---- Per-condition SR (pooled standardization, accumulated across seeds) ----
+        # ---- Per-condition SR (multi-dim drive, pooled standardization) ----
+        # Pre-compute per-dimension standardization (pooled TR+PB, matching training)
+        drive_mu_c, drive_std_c = {}, {}
+        for dk in DRIVE_KEYS:
+            all_vals = np.concatenate([
+                f_df[f_df["Condition"] == v][dk].values for v in [0.0, 1.0]])
+            drive_mu_c[dk] = np.mean(all_vals)
+            drive_std_c[dk] = np.std(all_vals)
+            if drive_std_c[dk] < 1e-9:
+                drive_std_c[dk] = 1.0
+
         with torch.no_grad():
             L_np = model.lie_cell.dissipation.get_L_numpy()
             L_fro = np.linalg.norm(L_np)
             for val, cond_name in [(0.0, "Tracking"), (1.0, "Playback")]:
-                v_cond = f_df[f_df["Condition"] == val]["Velocity_x"].values
-                if len(v_cond) > 100:
-                    v_std = (v_cond - mu_pool) / std_pool  # pooled standardization
-                    u_samples = torch.tensor(
-                        v_std[:1000].reshape(-1, 1),
-                        dtype=torch.float32, device=DEVICE)
+                # Build multi-dim drive samples for this condition
+                cond_mask = f_df["Condition"] == val
+                components = []
+                for dk in DRIVE_KEYS:
+                    v = f_df.loc[cond_mask, dk].values
+                    v_std = (v - drive_mu_c[dk]) / drive_std_c[dk]
+                    components.append(v_std[:1000].reshape(-1, 1).astype(np.float32))
+                u_samples = torch.tensor(
+                    np.column_stack(components), dtype=torch.float32, device=DEVICE)
+
+                if len(u_samples) > 1:
                     _, J_samples, _ = model.lie_cell.compute_generator(u_samples)
                     J_np = J_samples.cpu().numpy()
                     sr_vals = [np.linalg.norm(J_np[k]) /

@@ -54,10 +54,11 @@ LAMBDA_DYN = 0.1                # dynamics loss weight
 LAMBDA_DYN_WARMUP = 200         # steps of lambda=0 warmup before ramping
 CONSTRAINED_L = False           # True: L = -C@C.T (stable dissipation); False: unconstrained
 CEBRA_LABEL = "Velocity_x"      # column for InfoNCE contrastive labels
-DRIVE_KEYS = ["Velocity_x"]     # drive features for dynamics u(t)
+DRIVE_KEYS = ["Velocity_x", "Played_frequency"]  # drive features for dynamics u(t)
+# ControlNet sees all DRIVE_KEYS simultaneously: Velocity_x provides motor
+# efference, Played_frequency provides sensory context for plane allocation.
 # When CEBRA_LABEL != DRIVE_KEYS[0]: decoupled mode — embedding shaped by one
-# signal, dynamics driven by another.  E.g. CEBRA_LABEL="Played_frequency"
-# tests whether motor drive produces rotation in a sensory-context embedding.
+# signal, dynamics driven by another.
 ENCODER_HIDDEN = [128, 64]      # encoder hidden channel sizes
 CONTROL_HIDDEN = [32]           # control net hidden sizes
 MINI_TRAJ_LEN = 20              # mini-trajectory length in bins (~100ms at dt=0.005)

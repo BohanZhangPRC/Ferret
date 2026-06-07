@@ -19,6 +19,7 @@ CELLS = [
     ("04_baseline_dummy.py", "code"),
     ("05_md_baseline_check.md", "markdown"),
     ("06_baseline_stats.py", "code"),
+    ("15_cleanup_after_baseline.py", "code"),
     ("07_md_model.md", "markdown"),
     ("08_models.py", "code"),
     ("09_training.py", "code"),
@@ -27,6 +28,7 @@ CELLS = [
     ("12_results_comparison.py", "code"),
     ("13_tracking_vs_playback.py", "code"),
     ("14_summary.py", "code"),
+    ("16_cleanup_final.py", "code"),
 ]
 
 nb = {

@@ -268,29 +268,52 @@ class SkieurLieODE(nn.Module):
         return z_true, z_pred
 
     def get_generator_matrices(self, n_drive_samples=100):
-        """Return representative J_skew, L as numpy arrays for metric reporting.
+        """Return metrics from the drive-dependent generator J(u) = sum w_i(u) G_i.
 
-        The true generator J(u_t) is drive-dependent via ControlNet.
-        Rather than reporting J(0) (which may be near-zero if the model
-        learns "no rotation at rest"), we sample n_drive_samples from the
-        standardized-drive distribution N(0,1) and report ||E_u[J(u)]||.
+        CRITICAL: a successful model learns w_i(u) ≈ -w_i(-u) (rotation direction
+        follows velocity sign).  With symmetric drive distribution N(0,1), the
+        MATRIX average E_u[J(u)] ≈ 0 cancels out — exactly when rotation is
+        strongest.  We therefore compute metrics PER SAMPLE and average:
 
-        This captures the expected rotational structure under the drive
-        distribution, making SR and eigenvalues representative of the
-        actual operating regime.
+          SR      = mean_u [ ||J(u)|| / (||J(u)|| + ||L||) ]
+          |Real|  = mean_u [ |Real(eig(J(u) + L))| ]
+          |Imag|  = mean_u [ |Imag(eig(J(u) + L))| ]
+
+        Returns:
+            J_avg:  (D, D) mean matrix (may be near zero — do NOT use for SR/eig)
+            L:      (D, D) dissipation matrix
+            sr_mean:     float, per-sample-averaged skewness ratio
+            eig_real:    float, per-sample-averaged |Real(eigenvalue)|
+            eig_imag:    float, per-sample-averaged |Imag(eigenvalue)|
         """
         with torch.no_grad():
             dev = next(self.parameters()).device
             d_drive = self.lie_cell.control.net[0].in_features
-            # Sample from standardized drive distribution N(0, 1)
             u_samples = torch.randn(n_drive_samples, d_drive, device=dev)
             _, J_samples, L = self.lie_cell.compute_generator(u_samples)
-            # ||J|| averaged over drive distribution
-            J_norms = torch.norm(J_samples.reshape(n_drive_samples, -1), dim=1)
-            J_avg_norm = J_norms.mean()
-            # Representative J: the average generator matrix
-            J_avg = J_samples.mean(dim=0)
-        return J_avg.cpu().numpy(), L.cpu().numpy()
+            L_np = L.cpu().numpy()
+            L_fro = np.linalg.norm(L_np)
+
+            # Per-sample metrics
+            J_np = J_samples.cpu().numpy()  # (n_samples, D, D)
+            sr_vals = []
+            eig_real_vals, eig_imag_vals = [], []
+            for k in range(n_drive_samples):
+                J_k = J_np[k]
+                j_norm = np.linalg.norm(J_k)
+                sr_vals.append(j_norm / (j_norm + L_fro + 1e-9))
+                eigvals = np.linalg.eigvals(J_k + L_np)
+                eig_real_vals.append(np.mean(np.abs(np.real(eigvals))))
+                eig_imag_vals.append(np.mean(np.abs(np.imag(eigvals))))
+
+            sr_mean = float(np.mean(sr_vals))
+            eig_real = float(np.mean(eig_real_vals))
+            eig_imag = float(np.mean(eig_imag_vals))
+
+            # Average matrix (for reference only — may cancel for odd w(u))
+            J_avg = J_samples.mean(dim=0).cpu().numpy()
+
+        return J_avg, L_np, sr_mean, eig_real, eig_imag
 
 
 # --- Quick sanity test ---
@@ -314,8 +337,9 @@ x_test = torch.randn(B, T, n_test, device=DEVICE)
 d_test = torch.randn(B, T, d_drive, device=DEVICE)
 z_true, z_pred = model(x_test, d_test)
 print(f"  Smoke test: z_true {tuple(z_true.shape)}, z_pred {tuple(z_pred.shape)}")
-# Check skewness
-J_s, L_m = model.get_generator_matrices()
-J_skewness = np.linalg.norm(J_s) / (np.linalg.norm(J_s) + np.linalg.norm(L_m) + 1e-9)
-print(f"  Initial J skewness (before training): {J_skewness:.4f}")
+# Check skewness (per-sample average, NOT matrix-average)
+J_avg, L_m, sr, eig_r, eig_i = model.get_generator_matrices()
+print(f"  Initial SR (per-sample avg): {sr:.4f}, |Real|: {eig_r:.4f}, |Imag|: {eig_i:.4f}")
+print(f"  (J_avg norm: {np.linalg.norm(J_avg):.4f} — may be near-zero for odd w(u); SR/eig use per-sample avg)")
+print("Model instantiation OK.")
 print("Model instantiation OK.")

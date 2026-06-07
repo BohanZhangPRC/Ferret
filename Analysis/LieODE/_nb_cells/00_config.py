@@ -59,11 +59,20 @@ BATCH_SIZE = 512                # frames per batch (flattened)
 LR = 3e-4                       # learning rate
 WEIGHT_DECAY = 1e-6             # AdamW weight decay
 GRAD_CLIP = 1.0                 # gradient clipping norm
+TEMPERATURE = 0.1               # InfoNCE temperature (CEBRA default is 1.5; lower = sharper)
 MIN_EPOCH_TIMEPOINTS = 200      # minimum timepoints per epoch
 MIN_EPOCHS_PER_COND = 1         # minimum epochs per condition
 N_SHUFFLES = 10                 # shuffle realizations for drive-shuffle control
 TRAIN_VAL_SPLIT = 0.8           # fraction of epochs for training (remainder held-out)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+RANDOM_SEED = 42                     # fixed seed for reproducibility
+N_TRAIN_SESSIONS = 5                 # number of sessions to train (randomly sampled)
+
+# --- Reproducibility ---
+np.random.seed(RANDOM_SEED)
+torch.manual_seed(RANDOM_SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(RANDOM_SEED)
 
 # --- HAS_* flags for optional dependencies ---
 HAS_CEBRA = False

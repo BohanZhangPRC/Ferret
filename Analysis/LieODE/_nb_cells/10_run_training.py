@@ -8,9 +8,15 @@ e2e_session = []       # per session (SR, eig — shared generator, same for bot
 e2e_histories = []     # per session training curves
 e2e_val_metrics = []   # per session cross-validated metrics
 
-N_TRAIN_SESSIONS = min(5, len(n_data_all))  # train on first N sessions
+# Randomly sample sessions (not first N — avoids ordering bias)
+n_sessions_available = len(n_data_all)
+n_train = min(N_TRAIN_SESSIONS, n_sessions_available)
+train_indices = np.random.choice(n_sessions_available, size=n_train, replace=False)
+train_indices = sorted(train_indices)
+print(f"Training on {n_train}/{n_sessions_available} sessions (randomly sampled): "
+      f"{train_indices.tolist()}")
 
-for idx in trange(N_TRAIN_SESSIONS, desc="Joint Training"):
+for idx in tqdm(train_indices, desc="Joint Training"):
     n_data_session = n_data_all[idx]
     f_df = f_data_all[idx]
     hs_label = "hs0" if idx < n_hs0 else "hs1"
@@ -38,12 +44,9 @@ for idx in trange(N_TRAIN_SESSIONS, desc="Joint Training"):
     })
 
     # ---- Extract learned metrics ----
-    # SR / eigenvalues are from the shared generator J(u)+L — ONE value per session.
-    J_skew, L_mat = model.get_generator_matrices()
-    J_full = J_skew + L_mat
-    sr = (np.linalg.norm(J_skew) /
-          (np.linalg.norm(J_skew) + np.linalg.norm(L_mat) + 1e-9))
-    re, im = compute_eigenvalue_metrics(J_full)
+    # SR / eigenvalues from per-sample averaging over the drive distribution
+    # (per-sample avoids cancellation of odd w_i(u) under symmetric drive).
+    J_avg, L_mat, sr, re, im = model.get_generator_matrices()
 
     e2e_session.append({
         "Subject": "SKIEUR", "Session_Idx": idx,
@@ -56,14 +59,15 @@ for idx in trange(N_TRAIN_SESSIONS, desc="Joint Training"):
     })
 
     # R2_drive is per-condition (different held-out epochs) — store separately.
+    # Also stores E2E's own drive-shuffle null for self-gating.
     for cond_name in ["Tracking", "Playback"]:
+        vm = val_metrics.get(cond_name, {})
         e2e_results.append({
             "Subject": "SKIEUR", "Session_Idx": idx,
             "Headstage": hs_label, "Condition": cond_name,
-            "R2_drive_rollout": val_metrics.get(cond_name, {}).get(
-                'R2_drive_rollout', float('nan')),
-            "n_val_epochs": val_metrics.get(cond_name, {}).get(
-                'n_val_epochs', 0),
+            "R2_drive_rollout": vm.get('R2_drive_rollout', float('nan')),
+            "R2_drive_shuffle": vm.get('R2_drive_shuffle', float('nan')),
+            "n_val_epochs": vm.get('n_val_epochs', 0),
         })
 
     # Cleanup

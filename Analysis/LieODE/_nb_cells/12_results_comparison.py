@@ -1,11 +1,22 @@
 # ============================================================
 # Phase 3 -- Results Comparison: Baseline vs End-to-End vs Dummy
 # ============================================================
+# IMPORTANT: baseline R2_drive (derivative-based OLS) and E2E R2_drive_rollout
+# (trajectory-rollout MSE) are DIFFERENT ESTIMATORS of conceptually related
+# quantities.  They are NOT directly comparable on a y=x scatter.  Each is
+# gated against its OWN null:
+#   - Baseline: R2_drive > R2_drive_shuffle (same embedding, shuffled labels)
+#   - Baseline: R2_drive > R2_drive_dummy   (dummy-CEBRA embedding)
+#   - E2E:     R2_drive_rollout > R2_drive_shuffle (same encoder, shuffled drive)
 
 if e2e_df is not None and baseline_df is not None:
     print("=" * 60)
-    print("  Baseline vs End-to-End Comparison")
+    print("  Results Comparison")
     print("=" * 60)
+    print("  NOTE: baseline R2_drive (derivative OLS) and E2E R2_drive_rollout")
+    print("        (trajectory rollout) are different estimators — not directly")
+    print("        comparable.  Each is gated against its own null distribution.")
+    print()
 
     # ---- Merge session-level metrics (SR, eig) ----
     # e2e_session_df has one row per session; baseline_df has one per condition.
@@ -52,18 +63,31 @@ if e2e_df is not None and baseline_df is not None:
         print(f"  {cond}: R2_drive_baseline={sub['R2_drive'].mean():.6f}, "
               f"R2_drive_e2e={sub['R2_drive_rollout'].mean():.6f}")
 
-    # ---- Dummy-CEBRA gate ----
+    # ---- Gates: each pipeline vs its OWN null ----
+    # Baseline gates (derivative-based R2_drive)
+    base_shuf = baseline_df[["Session_Idx", "Headstage", "Condition",
+                              "R2_drive", "R2_drive_shuffle"]].copy()
+    gate_base_shuf = (base_shuf["R2_drive"] >
+                       base_shuf["R2_drive_shuffle"]).sum()
+    print(f"\n  Gate (Baseline R2_drive > shuffle): {gate_base_shuf}/"
+          f"{len(base_shuf)}")
+
     if dummy_df is not None:
-        compare_r2_dummy = compare_r2.merge(
-            dummy_df[["Session_Idx", "Headstage", "Condition", "SR_dummy",
-                      "R2_drive_dummy"]],
+        base_dummy = base_shuf.merge(
+            dummy_df[["Session_Idx", "Headstage", "Condition", "R2_drive_dummy"]],
             on=["Session_Idx", "Headstage", "Condition"])
-        gate_e2e = (compare_r2_dummy["R2_drive_rollout"] >
-                     compare_r2_dummy["R2_drive_dummy"]).sum()
-        gate_base = (compare_r2_dummy["R2_drive"] >
-                      compare_r2_dummy["R2_drive_dummy"]).sum()
-        print(f"\n  R2_drive gate (E2E > Dummy): {gate_e2e}/{len(compare_r2_dummy)}")
-        print(f"  R2_drive gate (Baseline > Dummy): {gate_base}/{len(compare_r2_dummy)}")
+        gate_base_dummy = (base_dummy["R2_drive"] >
+                            base_dummy["R2_drive_dummy"]).sum()
+        print(f"  Gate (Baseline R2_drive > Dummy-CEBRA): "
+              f"{gate_base_dummy}/{len(base_dummy)}")
+
+    # E2E gate (trajectory-rollout-based R2_drive_rollout)
+    e2e_gate = e2e_df[["Session_Idx", "Headstage", "Condition",
+                        "R2_drive_rollout", "R2_drive_shuffle"]].copy()
+    gate_e2e_shuf = (e2e_gate["R2_drive_rollout"] >
+                      e2e_gate["R2_drive_shuffle"]).sum()
+    print(f"  Gate (E2E R2_drive_rollout > drive-shuffle): "
+          f"{gate_e2e_shuf}/{len(e2e_gate)}")
 
     # --- Visualization ---
     fig, axes = plt.subplots(2, 3, figsize=(10, 6))
@@ -96,32 +120,46 @@ if e2e_df is not None and baseline_df is not None:
     # Row 1, col 3: loss curve
     axes[0, 2].set_title("Final Training Loss")
 
-    # Row 2, col 1-2: R2_drive per condition scatter
-    for i, cond in enumerate(["Tracking", "Playback"]):
-        sub = compare_r2[compare_r2["Condition"] == cond]
-        axes[1, i].scatter(sub["R2_drive"], sub["R2_drive_rollout"],
-                           c="#21918c", s=20, alpha=0.7)
-        all_vals = np.concatenate([sub["R2_drive"].values,
-                                    sub["R2_drive_rollout"].values])
-        vmin = min(0, np.nanmin(all_vals) * 1.1)
-        vmax = max(0.01, np.nanmax(all_vals) * 1.1)
-        axes[1, i].plot([vmin, vmax], [vmin, vmax], '--', c='gray', lw=0.8)
-        axes[1, i].set_xlim(vmin, vmax); axes[1, i].set_ylim(vmin, vmax)
-        axes[1, i].set_xlabel("R2_drive (Baseline)")
-        axes[1, i].set_ylabel("R2_drive (E2E)")
-        axes[1, i].set_title(f"R2_drive: {cond}")
+    # Row 2, col 1-2: R2_drive self-null (each pipeline vs its own null)
+    # Baseline: R2_drive true vs shuffle
+    base_r2_bar = baseline_df.groupby("Condition")[
+        ["R2_drive", "R2_drive_shuffle"]].mean().reset_index()
+    base_r2_melt = pd.melt(base_r2_bar, id_vars=["Condition"],
+                           value_vars=["R2_drive", "R2_drive_shuffle"],
+                           var_name="Type", value_name="R2_drive")
+    sns.barplot(data=base_r2_melt, x="Condition", y="R2_drive", hue="Type",
+                ax=axes[1, 0],
+                palette={"R2_drive": "#440154", "R2_drive_shuffle": "#B2B2B2"})
+    axes[1, 0].set_title("Baseline R2_drive\n(true vs shuffle)")
+    axes[1, 0].legend(fontsize=5)
 
-    # Row 2, col 3: R2_drive bar per condition
-    r2_bar = compare_r2.groupby("Condition")[
-        ["R2_drive", "R2_drive_rollout"]].mean().reset_index()
-    r2_bar_melt = pd.melt(r2_bar, id_vars=["Condition"],
-                          value_vars=["R2_drive", "R2_drive_rollout"],
-                          var_name="Pipeline", value_name="R2_drive")
-    sns.barplot(data=r2_bar_melt, x="Condition", y="R2_drive", hue="Pipeline",
-                ax=axes[1, 2],
-                palette={"R2_drive": "#440154", "R2_drive_rollout": "#21918c"})
-    axes[1, 2].set_title("R2_drive: Baseline vs E2E")
-    axes[1, 2].legend(fontsize=5)
+    # E2E: R2_drive_rollout true vs drive-shuffle
+    e2e_r2_bar = e2e_df.groupby("Condition")[
+        ["R2_drive_rollout", "R2_drive_shuffle"]].mean().reset_index()
+    e2e_r2_melt = pd.melt(e2e_r2_bar, id_vars=["Condition"],
+                          value_vars=["R2_drive_rollout", "R2_drive_shuffle"],
+                          var_name="Type", value_name="R2_drive")
+    sns.barplot(data=e2e_r2_melt, x="Condition", y="R2_drive", hue="Type",
+                ax=axes[1, 1],
+                palette={"R2_drive_rollout": "#21918c",
+                         "R2_drive_shuffle": "#B2B2B2"})
+    axes[1, 1].set_title("E2E R2_drive_rollout\n(true vs drive-shuffle)")
+    axes[1, 1].legend(fontsize=5)
+
+    # Row 2, col 3: Gate pass/fail summary
+    labels = ['Base\nvs Shuf', 'Base\nvs Dummy', 'E2E\nvs Shuf']
+    passes = [gate_base_shuf, gate_base_dummy if dummy_df is not None else 0,
+              gate_e2e_shuf]
+    totals = [len(base_shuf), len(base_dummy) if dummy_df is not None else 0,
+              len(e2e_gate)]
+    colors_bar = ['#440154', '#440154', '#21918c']
+    axes[1, 2].bar(labels, [p/max(t,1) for p, t in zip(passes, totals)],
+                   color=colors_bar, alpha=0.7)
+    for i, (p, t) in enumerate(zip(passes, totals)):
+        if t > 0:
+            axes[1, 2].text(i, p/t + 0.02, f'{p}/{t}', ha='center', fontsize=7)
+    axes[1, 2].set_ylabel("Pass Fraction"); axes[1, 2].set_ylim(0, 1.1)
+    axes[1, 2].set_title("Gate Pass Rates")
 
     plt.suptitle("Baseline vs End-to-End Lie-ODE Comparison",
                  y=1.02, fontsize=10, fontweight="bold")

@@ -15,9 +15,10 @@ if e2e_df is not None:
         print("--- Session-level Generator Metrics (shared J(u)+L) ---")
         print(f"  Mean SR:           {e2e_session_df['SR'].mean():.4f} "
               f"(sem={e2e_session_df['SR'].sem():.4f})")
-        print(f"  Mean |Real|:       {e2e_session_df['Eig_Real_Mean'].mean():.4f}")
-        print(f"  Mean |Imag|:       {e2e_session_df['Eig_Imag_Mean'].mean():.4f}")
         print(f"  N sessions:        {len(e2e_session_df)}")
+        print(f"  (Eigenvalues are per-session diagnostics in arbitrary encoder-scale")
+        print(f"   units — not comparable across independently-trained sessions.")
+        print(f"   See per-session table in Cell 10 for individual values.)")
         print()
 
     # ---- Per-condition R2_drive: Tracking vs Playback ----

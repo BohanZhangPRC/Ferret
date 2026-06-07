@@ -116,8 +116,6 @@ def compute_r2_drive_rollout(model, ep_n, ep_drive, dt=0.005,
                 F.mse_loss(z_pred_full[1:-1], z_win[1:]).item())
             mse_leak_wins.append(
                 F.mse_loss(z_pred_leak[1:-1], z_win[1:]).item())
-            mse_leak_wins.append(
-                F.mse_loss(z_pred_leak[1:-1], z_win[1:]).item())
 
         if not mse_full_wins:
             return float('nan')
@@ -126,6 +124,34 @@ def compute_r2_drive_rollout(model, ep_n, ep_drive, dt=0.005,
         mse_leak_avg = np.mean(mse_leak_wins)
         r2_drive = 1.0 - (mse_full_avg / (mse_leak_avg + 1e-9))
         return r2_drive
+
+
+def compute_r2_drive_shuffle(model, ep_n, ep_drive, dt=0.005,
+                              window_len=None, n_windows=20, n_shuffles=10):
+    """E2E null control: drive time-shuffle on FIXED trained encoder.
+
+    Permutes the drive sequence, then computes R2_drive_rollout.  Averaged
+    across n_shuffles realizations.  This is the E2E analogue of the baseline
+    time-shuffle: the encoder + generator are held fixed (same philosophy as
+    "fixed CEBRA embedding, shuffled labels" in the two-stage pipeline).
+
+    Returns:
+        r2_drive_shuffle: float (mean across shuffles)
+    """
+    if window_len is None:
+        window_len = VAL_ROLLOUT_LEN
+
+    vals = []
+    for _ in range(n_shuffles):
+        # Permute drive along time axis
+        perm = np.random.permutation(len(ep_drive))
+        ep_drive_shuf = ep_drive[perm]
+        r2d = compute_r2_drive_rollout(model, ep_n, ep_drive_shuf,
+                                        dt=dt, window_len=window_len,
+                                        n_windows=n_windows)
+        if not np.isnan(r2d):
+            vals.append(r2d)
+    return np.mean(vals) if vals else float('nan')
 
 
 def train_one_session(model, n_data_session, f_df, session_idx,
@@ -241,7 +267,7 @@ def train_one_session(model, n_data_session, f_df, session_idx,
             # ---- InfoNCE loss (flatten ALL frames across batch) ----
             z_flat = z_true.reshape(-1, D_LATENT)  # (B*T, D)
             l_flat = batch_l.reshape(-1)           # (B*T,)
-            loss_info = info_nce_loss(z_flat, l_flat)
+            loss_info = info_nce_loss(z_flat, l_flat, temperature=TEMPERATURE)
 
             # ---- Dynamics MSE (trajectory rollout prediction) ----
             # z_pred: (B, T+1, D) = [z_0_pred, z_1_pred, ..., z_T_pred]
@@ -293,12 +319,18 @@ def train_one_session(model, n_data_session, f_df, session_idx,
     val_metrics = {}
     for cond_name in ["Tracking", "Playback"]:
         ve = val_epochs[cond_name]
-        r2d_vals = []
+        r2d_vals, r2d_sh_vals = [], []
         for ep_n, ep_d in zip(ve['n'], ve['d']):
+            # True R2_drive
             r2d = compute_r2_drive_rollout(model, ep_n, ep_d, dt)
             r2d_vals.append(r2d)
+            # Shuffle null: permute drive, same fixed encoder (E2E own null)
+            r2d_sh = compute_r2_drive_shuffle(model, ep_n, ep_d, dt,
+                                               n_shuffles=N_SHUFFLES)
+            r2d_sh_vals.append(r2d_sh)
         val_metrics[cond_name] = {
             'R2_drive_rollout': np.mean(r2d_vals) if r2d_vals else float('nan'),
+            'R2_drive_shuffle': np.mean(r2d_sh_vals) if r2d_sh_vals else float('nan'),
             'R2_drive_sem': np.std(r2d_vals) / max(1, len(r2d_vals)) ** 0.5
             if r2d_vals else float('nan'),
             'n_val_epochs': len(r2d_vals),

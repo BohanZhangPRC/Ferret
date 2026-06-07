@@ -18,3 +18,4 @@ PyTorch implementation of the joint encoder + Lie generator pipeline.
 - **Short-window validation**: held-out R2_drive uses random windows of `VAL_ROLLOUT_LEN` bins (not full-epoch rollout), preventing long-range divergence from contaminating the headline metric
 - **CONSTRAINED_L flag**: allows ablation between stable (`-CC^T`) and unconstrained dissipation
 - **lambda_dyn warmup**: 0 for first N steps, then linear ramp (stabilizes training)
+- **Multi-dim drive support**: `DRIVE_KEYS` can be extended to e.g. `["Velocity_x", "Position", "Acc_x", "freq_error"]`. ControlNet accepts arbitrary drive_dim. For feature ablation, zero out individual drive dimensions at test time and measure R2_drive drop — this reveals which kinematic variables the forward model primarily coordinates on. (Default is single-dim `Velocity_x`; extend `DRIVE_KEYS` and rerun for multi-dim analysis.)

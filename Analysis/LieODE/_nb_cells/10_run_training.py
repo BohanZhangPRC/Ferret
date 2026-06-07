@@ -72,6 +72,31 @@ for idx in tqdm(train_indices, desc="Joint Training"):
                 seed_r2d_sh[cond_name][wlen].append(
                     r2d_sh_dict.get(wlen, float('nan')))
 
+        # ---- Per-condition SR (condition-specific drive distribution) ----
+        # The shared generator has ONE L but J(u) varies with drive via ControlNet.
+        # We compute SR_TR = E_{u~TR}[||J(u)||/(||J(u)||+||L||)] and same for PB.
+        sr_cond = {}
+        with torch.no_grad():
+            L_np = model.lie_cell.dissipation.get_L_numpy()
+            L_fro = np.linalg.norm(L_np)
+            for val, cond_name in [(0.0, "Tracking"), (1.0, "Playback")]:
+                # Sample drives from this condition's raw data
+                v_cond = f_df[f_df["Condition"] == val]["Velocity_x"].values
+                if len(v_cond) > 100:
+                    # Standardize (matching training)
+                    v_std = (v_cond - np.mean(v_cond)) / (np.std(v_cond) + 1e-9)
+                    u_samples = torch.tensor(
+                        v_std[:1000].reshape(-1, 1),  # up to 1000 samples
+                        dtype=torch.float32, device=DEVICE)
+                    _, J_samples, _ = model.lie_cell.compute_generator(u_samples)
+                    J_np = J_samples.cpu().numpy()
+                    sr_vals = [np.linalg.norm(J_np[k]) /
+                               (np.linalg.norm(J_np[k]) + L_fro + 1e-9)
+                               for k in range(len(J_np))]
+                    sr_cond[cond_name] = float(np.mean(sr_vals))
+                else:
+                    sr_cond[cond_name] = float('nan')
+
         del model; gc.collect(); torch.cuda.empty_cache()
 
     # ---- Aggregate across seeds ----
@@ -79,6 +104,8 @@ for idx in tqdm(train_indices, desc="Joint Training"):
         "Subject": "SKIEUR", "Session_Idx": idx, "Headstage": hs_label,
         "Space": "E2E_LieDynamics", "D_LATENT": D_LATENT,
         "SR": np.mean(seed_sr), "SR_sem": np.std(seed_sr) / max(1, N_SEEDS)**0.5,
+        "SR_Tracking": sr_cond.get("Tracking", float('nan')),
+        "SR_Playback": sr_cond.get("Playback", float('nan')),
         "Eig_Real_Mean": np.mean(seed_eig_r), "Eig_Imag_Mean": np.mean(seed_eig_i),
         "Loss_final": np.mean(seed_losses),
         "N_Seeds": N_SEEDS, "N_Neurons": n_neurons,

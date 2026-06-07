@@ -44,7 +44,27 @@ if len(vel_pivot) > 1:
         print(f"    {metric:10s}: TR={vel_pivot[metric]['Tracking'].mean():.2f}, "
               f"PB={vel_pivot[metric]['Playback'].mean():.2f}, "
               f"t={t:.3f}, p={p:.4f}")
-print()
+    # Per-session KS test (formal distribution comparison)
+    from scipy.stats import ks_2samp
+    ks_results = []
+    for idx, f_df in enumerate(f_data_all):
+        v_tr = f_df[f_df["Condition"] == 0.0]["Velocity_x"].values
+        v_pb = f_df[f_df["Condition"] == 1.0]["Velocity_x"].values
+        if len(v_tr) > 10 and len(v_pb) > 10:
+            ks_stat, ks_p = ks_2samp(v_tr, v_pb)
+            ks_results.append({"Session_Idx": idx, "KS_stat": ks_stat, "KS_p": ks_p})
+    if ks_results:
+        ks_df = pd.DataFrame(ks_results)
+        n_sig = (ks_df["KS_p"] < 0.05).sum()
+        print(f"  KS test (Tracking vs Playback per session):")
+        print(f"    Sessions with p<0.05: {n_sig}/{len(ks_df)}")
+        print(f"    Mean KS stat: {ks_df['KS_stat'].mean():.3f}, "
+              f"median p: {ks_df['KS_p'].median():.3f}")
+        if n_sig > len(ks_df) / 2:
+            print(f"    WARNING: majority of sessions show significantly")
+            print(f"      different velocity distributions -- kinematic confound")
+            print(f"      is likely.")
+    print()
 
 # Velocity histogram
 fig, axes = plt.subplots(1, 2, figsize=(6, 2.5))
@@ -64,6 +84,24 @@ for fmt in ["pdf", "png"]:
     plt.savefig(os.path.join(LIE_OUTPUT_DIR, f"Velocity_Distribution_TR_PB.{fmt}"),
                 dpi=150, bbox_inches="tight")
 plt.show()
+
+# ---- Per-condition SR (condition-specific drive distribution) ----
+if 'e2e_session_df' in dir() and e2e_session_df is not None:
+    if 'SR_Tracking' in e2e_session_df.columns and 'SR_Playback' in e2e_session_df.columns:
+        print("  Per-condition SR (drive-distribution-specific):")
+        sr_tr = e2e_session_df['SR_Tracking'].dropna()
+        sr_pb = e2e_session_df['SR_Playback'].dropna()
+        # Align by session
+        common = e2e_session_df[['Session_Idx', 'SR_Tracking', 'SR_Playback']].dropna()
+        print(f"    SR_Tracking: {common['SR_Tracking'].mean():.4f} +- {common['SR_Tracking'].sem():.4f}")
+        print(f"    SR_Playback:  {common['SR_Playback'].mean():.4f} +- {common['SR_Playback'].sem():.4f}")
+        if len(common) > 1:
+            t_sr, p_sr = ttest_rel(common['SR_Tracking'], common['SR_Playback'])
+            print(f"    Paired t-test: t={t_sr:.3f}, p={p_sr:.4f}")
+            if p_sr < 0.05:
+                print(f"    -> Tracking SR significantly higher: rotation specifically")
+                print(f"       enhanced, not just global gain modulation.")
+        print()
 
 if e2e_df is not None:
     print("=" * 60)

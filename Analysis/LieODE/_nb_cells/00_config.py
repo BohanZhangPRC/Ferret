@@ -1,13 +1,17 @@
 # ============================================================
-# Skieur End-to-End Lie-ODE -- Config + Imports
+# Skieur End-to-End Lie Dynamics -- Config + Imports
 # ============================================================
-# Jointly trains CEBRA encoder + Lie generator (end-to-end)
-# instead of the two-stage CEBRA -> OLS pipeline.
+# Jointly trains encoder + Lie generator (end-to-end) instead of the
+# two-stage CEBRA -> OLS pipeline.
 #
-# 4 Improvements over baseline:
+# This is an exploratory behavioural-constrained latent dynamics
+# modelling framework.  Default transition is discrete matrix_exp
+# (not continuous ODE); USE_ODE is experimental.
+#
+# Key features over baseline:
 #   1. End-to-end joint training: Loss = L_InfoNCE + lambda * L_dynamics
 #   2. Strict Lie parameterization: skew basis G_i + matrix_exp
-#   3. Neural ODE integration: replaces np.gradient finite-difference noise
+#   3. Variance-normalized dynamics loss (prevents ||z||->0 trivial solution)
 #   4. Nonlinear multidim forward model: J(t) = sum_i w_i(u_t) G_i
 
 import os, sys, gc, json, datetime, warnings
@@ -45,28 +49,29 @@ NAS = r"\\129.199.81.18\data5\eTheremin"
 # --- New config for end-to-end pipeline ---
 D_LATENT = 3                    # latent dimension (3/6/8)
 USE_ODE = False                 # True = torchdiffeq.odeint; False = discrete matrix_exp
-ODE_METHOD = "rk4"              # "rk4" or "dopri5" (only if USE_ODE=True)
+ODE_METHOD = "rk4"              # "rk4" or "dopri5" (only if USE_ODE=True; experimental)
 LAMBDA_DYN = 0.1                # dynamics loss weight
 LAMBDA_DYN_WARMUP = 200         # steps of lambda=0 warmup before ramping
 CONSTRAINED_L = False           # True: L = -C@C.T (stable dissipation); False: unconstrained
-VAL_ROLLOUT_LEN = 20            # validation rollout window length (bins; matches MINI_TRAJ_LEN)
 DRIVE_KEYS = ["Velocity_x"]     # drive features (extendable)
-ENCODER_HIDDEN = [128, 64]      # encoder MLP hidden sizes
-CONTROL_HIDDEN = [32]           # control net MLP hidden sizes
+ENCODER_HIDDEN = [128, 64]      # encoder hidden channel sizes
+CONTROL_HIDDEN = [32]           # control net hidden sizes
 MINI_TRAJ_LEN = 20              # mini-trajectory length in bins (~100ms at dt=0.005)
+VAL_ROLLOUT_LENS = [20, 50, 100]  # multi-scale validation windows (bins; 100ms/250ms/500ms)
 N_EPOCHS_TRAIN = 50             # outer training epochs (per session)
 BATCH_SIZE = 512                # frames per batch (flattened)
 LR = 3e-4                       # learning rate
 WEIGHT_DECAY = 1e-6             # AdamW weight decay
 GRAD_CLIP = 1.0                 # gradient clipping norm
-TEMPERATURE = 0.1               # InfoNCE temperature (NB: CEBRA default is 1.5; lower=sharper contrast; this is a hidden variable in E2E vs baseline comparison)
+TEMPERATURE = 1.5               # InfoNCE temperature (matched to CEBRA baseline for fair comparison)
 MIN_EPOCH_TIMEPOINTS = 200      # minimum timepoints per epoch
 MIN_EPOCHS_PER_COND = 1         # minimum epochs per condition
-N_SHUFFLES = 10                 # shuffle realizations for drive-shuffle control
+N_SHUFFLES = 50                 # shuffle realizations for null controls (inference-grade)
 TRAIN_VAL_SPLIT = 0.8           # fraction of epochs for training (remainder held-out)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-RANDOM_SEED = 42                     # fixed seed for reproducibility
-N_TRAIN_SESSIONS = 5                 # number of sessions to train (randomly sampled)
+RANDOM_SEED = 42                # base seed for reproducibility
+N_TRAIN_SESSIONS = None         # None = use all available sessions
+N_SEEDS = 3                     # number of random seeds per session (report seed variance)
 
 # --- Reproducibility ---
 np.random.seed(RANDOM_SEED)
@@ -114,5 +119,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 print(f"Device: {DEVICE}")
 print(f"D_LATENT={D_LATENT}, USE_ODE={USE_ODE}, LAMBDA_DYN={LAMBDA_DYN}")
 print(f"DRIVE_KEYS={DRIVE_KEYS}, CONSTRAINED_L={CONSTRAINED_L}")
-print(f"VAL_ROLLOUT_LEN={VAL_ROLLOUT_LEN} (validation window, bins)")
+print(f"TEMPERATURE={TEMPERATURE}, N_SHUFFLES={N_SHUFFLES}, N_SEEDS={N_SEEDS}")
+print(f"VAL_ROLLOUT_LENS={VAL_ROLLOUT_LENS} bins (multi-scale)")
+print(f"N_TRAIN_SESSIONS={'all' if N_TRAIN_SESSIONS is None else N_TRAIN_SESSIONS}")
 print("Cell 0 -- Config ready.")

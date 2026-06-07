@@ -104,10 +104,15 @@ if HAS_CEBRA:
                 eig_real_vals.append(re)
                 eig_imag_vals.append(im)
 
-                # --- Shuffle control (same embedding, permuted labels) ---
+                # --- Shuffle control (same embedding, circular-shifted labels) ---
+                # Uses np.roll to preserve autocorrelation structure (cf. E2E null
+                # and lie_algebra_method_description.md section 12.3).
+                T_lab = len(el)
+                min_shift = max(1, MINI_TRAJ_LEN)
                 s_sr, s_r2, s_r2d = [], [], []
                 for _ in range(N_SHUFFLES):
-                    el_sh = np.random.permutation(el)
+                    shift = np.random.randint(min_shift, max(min_shift + 1, T_lab - min_shift))
+                    el_sh = np.roll(el, shift)
                     _, sr_sh, r2_sh, _, r2d_sh = fit_lie_algebra_with_leak(
                         emb, el_sh)
                     s_sr.append(sr_sh)

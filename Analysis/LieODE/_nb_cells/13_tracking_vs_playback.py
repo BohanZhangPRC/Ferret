@@ -5,12 +5,65 @@
 # so Tracking/PB comparisons are only meaningful for R2_drive (held-out epochs).
 # SR/eig are reported as session-level summaries (pooled across conditions).
 #
-# CAVEAT — kinematic confound: drive is standardized across pooled TR+PB epochs.
+# CAVEAT -- kinematic confound: drive is standardized across pooled TR+PB epochs.
 # If the animal moves less during Playback, the drive dynamic range is smaller,
 # which may systematically lower R2_drive_rollout for Playback INDEPENDENTLY of
 # neural computation.  Observed TR > PB differences cannot be attributed to
 # neural mechanisms unless velocity distributions are first shown comparable
 # (cf. lie_algebra_method_description.md section 12.9).
+
+# ---- Velocity distribution check (kinematic confound) ----
+print("=" * 60)
+print("  Velocity Distribution Check (Kinematic Confound)")
+print("=" * 60)
+
+vel_stats = []
+for idx, (n_data_session, f_df) in enumerate(zip(n_data_all, f_data_all)):
+    for val, label in [(0.0, "Tracking"), (1.0, "Playback")]:
+        v = f_df[f_df["Condition"] == val]["Velocity_x"].values
+        vel_stats.append({
+            "Session_Idx": idx, "Condition": label,
+            "Mean": np.mean(v), "Std": np.std(v),
+            "RMS": np.sqrt(np.mean(v**2)),
+            "Range": np.ptp(v),
+            "N_tp": len(v),
+        })
+vel_df = pd.DataFrame(vel_stats)
+print(vel_df.groupby("Condition")[["Mean", "Std", "RMS", "Range"]].mean().round(2).to_string())
+print()
+
+# Paired t-test on velocity metrics
+vel_pivot = vel_df.pivot_table(
+    values=["Mean", "Std", "RMS", "Range"],
+    index="Session_Idx", columns="Condition").dropna()
+if len(vel_pivot) > 1:
+    print("  Tracking vs Playback velocity paired t-tests:")
+    for metric in ["RMS", "Std", "Range"]:
+        t, p = ttest_rel(vel_pivot[metric]["Tracking"],
+                         vel_pivot[metric]["Playback"])
+        print(f"    {metric:10s}: TR={vel_pivot[metric]['Tracking'].mean():.2f}, "
+              f"PB={vel_pivot[metric]['Playback'].mean():.2f}, "
+              f"t={t:.3f}, p={p:.4f}")
+print()
+
+# Velocity histogram
+fig, axes = plt.subplots(1, 2, figsize=(6, 2.5))
+for i, (cond, color) in enumerate([("Tracking", "#440154"), ("Playback", "#21918c")]):
+    all_v = np.concatenate([
+        f_df[f_df["Condition"] == (0.0 if cond == "Tracking" else 1.0)]["Velocity_x"].values
+        for f_df in f_data_all])
+    axes[i].hist(all_v, bins=50, color=color, alpha=0.7, density=True)
+    axes[i].set_title(f"{cond}\n(RMS={np.sqrt(np.mean(all_v**2)):.1f}, "
+                      f"N={len(all_v):,} tp)")
+    axes[i].set_xlabel("Velocity_x")
+axes[0].set_ylabel("Density")
+plt.suptitle("Velocity Distribution: Tracking vs Playback (all sessions)",
+             y=1.05, fontsize=9, fontweight="bold")
+plt.tight_layout()
+for fmt in ["pdf", "png"]:
+    plt.savefig(os.path.join(LIE_OUTPUT_DIR, f"Velocity_Distribution_TR_PB.{fmt}"),
+                dpi=150, bbox_inches="tight")
+plt.show()
 
 if e2e_df is not None:
     print("=" * 60)

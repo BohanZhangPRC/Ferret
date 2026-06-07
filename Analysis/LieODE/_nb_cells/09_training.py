@@ -68,7 +68,7 @@ def compute_r2_drive_rollout(model, ep_n, ep_drive, dt=0.005,
         r2_drive: float (averaged across windows)
     """
     if window_len is None:
-        window_len = VAL_ROLLOUT_LEN  # from Cell 0 config
+        window_len = VAL_ROLLOUT_LENS[0]  # shortest scale by default
 
     model.eval()
     with torch.no_grad():
@@ -147,7 +147,7 @@ def compute_r2_drive_shuffle(model, ep_n, ep_drive, dt=0.005,
         r2_drive_shuffle: float (mean across circular-shift realizations)
     """
     if window_len is None:
-        window_len = VAL_ROLLOUT_LEN
+        window_len = VAL_ROLLOUT_LENS[0]  # shortest scale by default
 
     T_drive = len(ep_drive)
     if T_drive < 2:
@@ -334,25 +334,39 @@ def train_one_session(model, n_data_session, f_df, session_idx,
 
         scheduler.step()
 
-    # ---- Validation metrics on held-out epochs ----
+    # ---- Multi-scale validation on held-out epochs ----
     val_metrics = {}
     for cond_name in ["Tracking", "Playback"]:
         ve = val_epochs[cond_name]
-        r2d_vals, r2d_sh_vals = [], []
+        r2d_multiscale = {w: [] for w in VAL_ROLLOUT_LENS}
+        r2d_sh_multiscale = {w: [] for w in VAL_ROLLOUT_LENS}
         for ep_n, ep_d in zip(ve['n'], ve['d']):
-            # True R2_drive
-            r2d = compute_r2_drive_rollout(model, ep_n, ep_d, dt)
-            r2d_vals.append(r2d)
-            # Shuffle null: permute drive, same fixed encoder (E2E own null)
-            r2d_sh = compute_r2_drive_shuffle(model, ep_n, ep_d, dt,
-                                               n_shuffles=N_SHUFFLES)
-            r2d_sh_vals.append(r2d_sh)
+            for wlen in VAL_ROLLOUT_LENS:
+                r2d = compute_r2_drive_rollout(model, ep_n, ep_d, dt,
+                                                window_len=wlen)
+                r2d_multiscale[wlen].append(r2d)
+                # Shuffle null (only at shortest scale for efficiency)
+                if wlen == VAL_ROLLOUT_LENS[0]:
+                    r2d_sh = compute_r2_drive_shuffle(
+                        model, ep_n, ep_d, dt, window_len=wlen,
+                        n_shuffles=N_SHUFFLES)
+                    r2d_sh_multiscale[wlen].append(r2d_sh)
+                else:
+                    r2d_sh_multiscale[wlen].append(float('nan'))
+
         val_metrics[cond_name] = {
-            'R2_drive_rollout': np.mean(r2d_vals) if r2d_vals else float('nan'),
-            'R2_drive_shuffle': np.mean(r2d_sh_vals) if r2d_sh_vals else float('nan'),
-            'R2_drive_sem': np.std(r2d_vals) / max(1, len(r2d_vals)) ** 0.5
-            if r2d_vals else float('nan'),
-            'n_val_epochs': len(r2d_vals),
+            'R2_drive_multiscale': {w: np.mean(r2d_multiscale[w])
+                                     if r2d_multiscale[w] else float('nan')
+                                     for w in VAL_ROLLOUT_LENS},
+            'R2_drive_shuffle_multiscale': {w: np.mean(r2d_sh_multiscale[w])
+                                             if r2d_sh_multiscale[w] else float('nan')
+                                             for w in VAL_ROLLOUT_LENS},
+            # Backward-compat: primary metric at shortest scale
+            'R2_drive_rollout': np.mean(r2d_multiscale[VAL_ROLLOUT_LENS[0]])
+            if r2d_multiscale[VAL_ROLLOUT_LENS[0]] else float('nan'),
+            'R2_drive_shuffle': np.mean(r2d_sh_multiscale[VAL_ROLLOUT_LENS[0]])
+            if r2d_sh_multiscale[VAL_ROLLOUT_LENS[0]] else float('nan'),
+            'n_val_epochs': len(ve['n']),
         }
 
     return model, history, val_metrics

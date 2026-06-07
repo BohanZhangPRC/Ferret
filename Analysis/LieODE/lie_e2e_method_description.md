@@ -13,14 +13,14 @@ The original pipeline (`Skieur_LieAlgebra_CEBRA.ipynb`) operates in two separate
 
 $$\frac{dz}{dt} = J_{\mathrm{skew}} \cdot z \cdot x(t) + L \cdot z$$
 
-via OLS regression with post-hoc skew-symmetrisation ($J_{\mathrm{skew}} = \frac{1}{2}(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)$).
+via OLS regression with post-hoc skew-symmetrisation ($J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T\bigr)$).
 
 This two-stage approach carries several structural limitations (documented in `lie_algebra_method_description.md` §12):
 
 | Limitation | Consequence |
 |-----------|-------------|
 | **Circular reasoning** (§12.2) | CEBRA embedding is shaped by $x(t)$; the Lie algebra is then fit using the same $x(t)$. High SR may be an algorithmic artefact. |
-| **Post-hoc projection** (§12.2, 13.2) | $J_{\mathrm{skew}} = \frac{1}{2}(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)$ is the projection of the unconstrained optimum, not the constrained optimum. |
+| **Post-hoc projection** (§12.2, 13.2) | $J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T\bigr)$ is the projection of the unconstrained optimum, not the constrained optimum. |
 | **Finite-difference noise** (§13.3) | $\frac{dz}{dt}$ is estimated via `np.gradient`, amplifying high-frequency noise. |
 | **Scalar linear gating** (§12.8) | $J_{\mathrm{skew}} \cdot x(t)$ assumes a single behavioural variable linearly gates one fixed rotation generator. |
 | **Missing Dummy-CEBRA control** (§9) | No negative control where CEBRA is trained on shuffled labels, leaving the possibility that any contrastive embedding produces apparent rotational structure. |
@@ -180,7 +180,7 @@ where the expectation is taken over the drive distribution. This **per-sample av
 | **Condition-specific SR** ($SR_{\mathrm{Tracking}}$, $SR_{\mathrm{Playback}}$) | $u$ sampled separately from each condition's empirical velocity distribution, standardised with the **pooled** TR+PB mean and std (matching training) | Tests whether Tracking specifically enhances rotational structure over Playback. Per-condition, per-seed, then averaged. |
 | **Empirical pooled SR** | Arithmetic mean of the two condition-specific SRs: $\frac{1}{2}(SR_{\mathrm{Tracking}} + SR_{\mathrm{Playback}})$, computed per session | Primary session-level metric; reflects the model's operating regime under both conditions equally. Note: this is the mean-of-means, not SR computed from a single pooled-drive sample — the two are close but not identical because SR is nonlinear in the drive and conditions may have unequal sample counts. |
 
-**Key difference from the two-stage pipeline**: the two-stage SR is $\|J_{\mathrm{skew}}\| / \|J_{\mathrm{ols}}\|$, computed from a single post-hoc matrix. The E2E SR is a **distributional expectation** over the drive-dependent $J(u_t)$, reflecting the fact that the generator is not a single matrix but a function of behavioural state.
+**Key difference from the two-stage pipeline**: the two-stage SR is $\lVert J_{\mathrm{skew}}\rVert / \lVert J_{\mathrm{ols}}\rVert$, computed from a single post-hoc matrix. The E2E SR is a **distributional expectation** over the drive-dependent $J(u_t)$, reflecting the fact that the generator is not a single matrix but a function of behavioural state.
 
 ### 6.2 Drive-Specific $R^2_{\mathrm{drive}}$ (Trajectory-Rollout)
 

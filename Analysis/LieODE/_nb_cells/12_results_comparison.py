@@ -150,8 +150,8 @@ if e2e_df is not None and baseline_df is not None:
         ["R2_drive", "R2_drive_shuffle"]].mean().reset_index()
     base_r2_melt = pd.melt(base_r2_bar, id_vars=["Condition"],
                            value_vars=["R2_drive", "R2_drive_shuffle"],
-                           var_name="Type", value_name="R2_drive")
-    sns.barplot(data=base_r2_melt, x="Condition", y="R2_drive", hue="Type",
+                           var_name="Type", value_name="Value")
+    sns.barplot(data=base_r2_melt, x="Condition", y="Value", hue="Type",
                 ax=axes[1, 0],
                 palette={"R2_drive": "#440154", "R2_drive_shuffle": "#B2B2B2"})
     axes[1, 0].set_title("Baseline R2_drive\n(true vs shuffle)")
@@ -163,8 +163,8 @@ if e2e_df is not None and baseline_df is not None:
         ["R2_drive_rollout", "R2_drive_shuffle"]].mean().reset_index()
     e2e_r2_melt = pd.melt(e2e_r2_bar, id_vars=["Condition"],
                           value_vars=["R2_drive_rollout", "R2_drive_shuffle"],
-                          var_name="Type", value_name="R2_drive")
-    sns.barplot(data=e2e_r2_melt, x="Condition", y="R2_drive", hue="Type",
+                          var_name="Type", value_name="Value")
+    sns.barplot(data=e2e_r2_melt, x="Condition", y="Value", hue="Type",
                 ax=axes[1, 1],
                 palette={"R2_drive_rollout": "#21918c",
                          "R2_drive_shuffle": "#B2B2B2"})

@@ -13,14 +13,14 @@ The original pipeline (`Skieur_LieAlgebra_CEBRA.ipynb`) operates in two separate
 
 $$\frac{dz}{dt} = J_{\mathrm{skew}} \cdot z \cdot x(t) + L \cdot z$$
 
-via OLS regression with post-hoc skew-symmetrisation ($J_{\mathrm{skew}} = \frac{1}{2}(J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$).
+via OLS regression with post-hoc skew-symmetrisation ($J_{\mathrm{skew}} = \frac{1}{2}(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)$).
 
 This two-stage approach carries several structural limitations (documented in `lie_algebra_method_description.md` §12):
 
 | Limitation | Consequence |
 |-----------|-------------|
 | **Circular reasoning** (§12.2) | CEBRA embedding is shaped by $x(t)$; the Lie algebra is then fit using the same $x(t)$. High SR may be an algorithmic artefact. |
-| **Post-hoc projection** (§12.2, 13.2) | $J_{\mathrm{skew}} = \frac{1}{2}(J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$ is the projection of the unconstrained optimum, not the constrained optimum. |
+| **Post-hoc projection** (§12.2, 13.2) | $J_{\mathrm{skew}} = \frac{1}{2}(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)$ is the projection of the unconstrained optimum, not the constrained optimum. |
 | **Finite-difference noise** (§13.3) | $\frac{dz}{dt}$ is estimated via `np.gradient`, amplifying high-frequency noise. |
 | **Scalar linear gating** (§12.8) | $J_{\mathrm{skew}} \cdot x(t)$ assumes a single behavioural variable linearly gates one fixed rotation generator. |
 | **Missing Dummy-CEBRA control** (§9) | No negative control where CEBRA is trained on shuffled labels, leaving the possibility that any contrastive embedding produces apparent rotational structure. |
@@ -272,7 +272,7 @@ If a majority of sessions show significantly different velocity distributions ($
 |--------|---------------------|----------------------|
 | **Embedding** | CEBRA InfoNCE, trained separately | Jointly trained with dynamics constraint |
 | **Generator** | Single $J_{\mathrm{skew}}$, scalar-gated by $x(t)$ | $J(u_t) = \sum_k w_k(u_t) G_k$, nonlinear drive-dependent |
-| **Skew constraint** | Post-hoc projection $J_{\mathrm{skew}} = \frac{1}{2}(J - J^T)$ | Strict: $J(u_t)$ is skew-symmetric by construction |
+| **Skew constraint** | Post-hoc projection $J_{\mathrm{skew}} = \frac{1}{2}(J - {J}^T)$ | Strict: $J(u_t)$ is skew-symmetric by construction |
 | **Dynamics fitting** | OLS on $\frac{dz}{dt}$ (`np.gradient`) | Trajectory rollout via `matrix_exp`, integrated prediction |
 | **$R^2_{\mathrm{drive}}$** | Instantaneous derivative prediction | Integrated trajectory prediction (multi-scale) |
 | **SR computation** | $\|J_{\mathrm{skew}}\| / \|J_{\mathrm{ols}}\|$ (single matrix) | $\mathbb{E}_u[\|J(u)\| / (\|J(u)\| + \|L\|)]$ (distributional) |

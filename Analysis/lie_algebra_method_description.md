@@ -192,7 +192,7 @@ L      = weights[N:, :]            # (N, N) — remaining N rows = leak matrix
 
 **Why the skew-symmetrization?** Any real square matrix can be uniquely decomposed into a symmetric part and a skew-symmetric part:
 
-$$ J_{\mathrm{ols}} = \underbrace{\frac{1}{2}(J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)}_{\text{skew-symmetric (rotation)}} + \underbrace{\frac{1}{2}(J_{\mathrm{ols}} + J_{\mathrm{ols}}^T)}_{\text{symmetric (scaling/dissipation)}} $$
+$$ J_{\mathrm{ols}} = \underbrace{\frac{1}{2}(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)}_{\text{skew-symmetric (rotation)}} + \underbrace{\frac{1}{2}(J_{\mathrm{ols}} + {J_{\mathrm{ols}}}^T)}_{\text{symmetric (scaling/dissipation)}} $$
 
 The skew-symmetric part $J_{\mathrm{skew}}$ satisfies $J_{\mathrm{skew}}^T = -J_{\mathrm{skew}}$. Its diagonal is always zero (a neuron does not rotationally drive *itself*), and each off-diagonal pair encodes a rotational coupling: $J_{\mathrm{skew}}[i,j] = -J_{\mathrm{skew}}[j,i]$ means neurons $i$ and $j$ form part of a rotational plane. The symmetric part is discarded because it represents scaling, stretching, or pure dissipation — not rotation.
 
@@ -222,7 +222,7 @@ sr = np.linalg.norm(J_skew) / np.linalg.norm(J_ols)
 
 The OLS variant (`LIE_METHOD = "lstsq"`) and the PyTorch variant (`"pytorch"`) differ only in how $J_{\mathrm{skew}}$ and $L$ are obtained (post-hoc skew-symmetrization vs. constrained gradient descent with $J = W - W^T$). Both produce functionally equivalent $J_{\mathrm{skew}}$, SR, R², and R²_drive metrics. The current pipeline uses `"lstsq"` by default for speed and reproducibility.
 
-**Optimization Caveat — post-hoc skew-symmetrization vs. constrained fitting:** The OLS approach solves for an unconstrained $J_{\mathrm{ols}}$ and then extracts $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$. This yields the *skew-symmetric projection of the unconstrained optimum*, which is **not guaranteed to be the constrained global optimum** — i.e., the best possible skew-symmetric matrix under the Lie algebra constraint may differ from the post-hoc projection. The PyTorch variant (`_fit_lie_pytorch`) addresses this by parameterizing $J = W - W^T$ directly and optimizing under the constraint via gradient descent. A planned future upgrade is to use PyTorch-constrained fitting as the default, solving $\min_{J^T = -J, L} \|dR/dt - J \cdot (R \cdot x) - L \cdot R\|^2$ exactly on the Lie algebra manifold.
+**Optimization Caveat — post-hoc skew-symmetrization vs. constrained fitting:** The OLS approach solves for an unconstrained $J_{\mathrm{ols}}$ and then extracts $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)$. This yields the *skew-symmetric projection of the unconstrained optimum*, which is **not guaranteed to be the constrained global optimum** — i.e., the best possible skew-symmetric matrix under the Lie algebra constraint may differ from the post-hoc projection. The PyTorch variant (`_fit_lie_pytorch`) addresses this by parameterizing $J = W - W^T$ directly and optimizing under the constraint via gradient descent. A planned future upgrade is to use PyTorch-constrained fitting as the default, solving $\min_{J^T = -J, L} \|dR/dt - J \cdot (R \cdot x) - L \cdot R\|^2$ exactly on the Lie algebra manifold.
 
 ---
 
@@ -616,7 +616,7 @@ This framework offers a geometrically interpretable window into sensorimotor neu
 
 ### 12.1 The skewness ratio is not a coordinate-invariant quantity
 
-The decomposition $J_{\mathrm{ols}} = \frac{1}{2}(J_{\mathrm{ols}} + J_{\mathrm{ols}}^T) + \frac{1}{2}(J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$ separates a matrix into symmetric and skew-symmetric parts. However, this decomposition is only physically meaningful as "stretch vs. rotation" under an **isotropic metric** (identity inner product, i.e., whitened/orthonormal coordinates). CEBRA embeddings are neither orthogonal nor endowed with a canonical metric — after per-neuron z-scoring, the covariance is still not identity. A linear change of basis $R \to PR$ does **not** preserve skew-symmetry (skew-symmetry is not similarity-invariant): the skew component under one coordinate system can become mixed with the symmetric component under another. **The SR therefore depends on the arbitrary, uncalibrated coordinate frame produced by CEBRA**, and its biological interpretation as "fraction of the generator that is rotational" is not coordinate-independent.
+The decomposition $J_{\mathrm{ols}} = \frac{1}{2}(J_{\mathrm{ols}} + {J_{\mathrm{ols}}}^T) + \frac{1}{2}(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)$ separates a matrix into symmetric and skew-symmetric parts. However, this decomposition is only physically meaningful as "stretch vs. rotation" under an **isotropic metric** (identity inner product, i.e., whitened/orthonormal coordinates). CEBRA embeddings are neither orthogonal nor endowed with a canonical metric — after per-neuron z-scoring, the covariance is still not identity. A linear change of basis $R \to PR$ does **not** preserve skew-symmetry (skew-symmetry is not similarity-invariant): the skew component under one coordinate system can become mixed with the symmetric component under another. **The SR therefore depends on the arbitrary, uncalibrated coordinate frame produced by CEBRA**, and its biological interpretation as "fraction of the generator that is rotational" is not coordinate-independent.
 
 This is the same criticism that **Lebedev et al. (2019, *Scientific Reports*)** leveled at jPCA-based rotational dynamics claims — that rotational patterns can emerge as visualization artifacts of temporal sequencing in neural responses rather than reflecting a fundamental computational principle. **Elsayed & Cunningham (2017, *Nature Neuroscience*)** developed the tensor maximum entropy (TME) null model specifically to test whether observed population structure exceeds what is expected from simpler, already-known features (single-neuron tuning, temporal correlations, signal correlations). Both critiques apply directly to the current framework and are **not yet addressed** in the pipeline — no TME-style calibration of SR against first- and second-order moment-matched surrogates is performed.
 
@@ -706,7 +706,7 @@ where $\mathcal{L}_{\mathrm{Dynamics}}$ penalizes deviations from $dR/dt = J_{\m
 
 ### 13.2 Strict Lie group parameterization and constrained optimization
 
-**Current:** OLS + post-hoc $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - J_{\mathrm{ols}}^T)$.
+**Current:** OLS + post-hoc $J_{\mathrm{skew}} = 0.5 \cdot (J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T)$.
 
 **Proposed:** Parameterize $J$ directly on the Lie algebra $\mathfrak{so}(N)$ (the space of skew-symmetric $N \times N$ matrices) using only the $N(N-1)/2$ independent parameters. Optimize under the constraint $J^T = -J$ using manifold-aware optimizers (e.g., Geoopt library). The state evolution can be expressed via the matrix exponential:
 

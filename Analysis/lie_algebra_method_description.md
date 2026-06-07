@@ -64,7 +64,7 @@ The Lie algebra is the **tangent space** at the identity element of a Lie group.
 **Example: 3D rotations.** The Lie algebra $\mathfrak{so}(3)$ is the set of all $3 \times 3$ **skew-symmetric** matrices (matrices satisfying $M^T = -M$). Any such matrix has the form:
 
 $$
-M = \begin{bmatrix} 0 & -c & b \\ c & 0 & -a \\ -b & a & 0 \end{bmatrix}
+M = \begin{bmatrix} 0 & -c & b \\\ c & 0 & -a \\\ -b & a & 0 \end{bmatrix}
 $$
 
 This matrix has exactly 3 independent parameters $(a, b, c)$ — matching the 3 degrees of freedom of 3D rotation (pitch, yaw, roll). The action of this matrix on a vector $\mathbf{v}$ produces $\mathbf{v} \times (a, b, c)$ — the cross product, which rotates $\mathbf{v}$ around the axis $(a, b, c)$ at angular speed $\|(a, b, c)\|$.

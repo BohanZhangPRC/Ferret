@@ -219,13 +219,15 @@ def compute_eigenvalue_metrics(J_full):
     return real_mean, imag_mean
 
 
-def info_nce_loss(z, labels, temperature=0.1):
+def info_nce_loss(z, labels, temperature=None):
     """InfoNCE loss for contrastive learning on continuous behavioral labels.
 
     For each anchor, finds k nearest neighbors in label space as positives.
     Uses per-row k-nearest (not global threshold) to avoid collapse from
     self-pair zeros dominating kthvalue on the full flattened matrix.
     """
+    if temperature is None:
+        temperature = TEMPERATURE  # from Cell 0 config
     z_norm = F.normalize(z, p=2, dim=1)
     sim = z_norm @ z_norm.T / temperature       # (N, N)
     label_diff = torch.abs(labels[:, None] - labels[None, :])  # (N, N)

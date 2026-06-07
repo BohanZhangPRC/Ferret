@@ -78,7 +78,7 @@ for idx in tqdm(train_indices, desc="Joint Training"):
 e2e_df = pd.DataFrame(e2e_results)         # per-condition (R2_drive)
 e2e_session_df = pd.DataFrame(e2e_session)  # per-session (SR, eig)
 e2e_val_df = pd.DataFrame(e2e_val_metrics)
-print(f"Trained {N_TRAIN_SESSIONS} sessions end-to-end.")
+print(f"Trained {len(train_indices)}/{n_sessions_available} sessions end-to-end.")
 print("--- Per-session generator metrics ---")
 print(e2e_session_df[["Session_Idx", "Headstage", "SR", "Eig_Real_Mean",
                        "Eig_Imag_Mean"]].round(4).to_string())
@@ -87,10 +87,13 @@ print(e2e_df.groupby("Condition")[["R2_drive_rollout"]].mean().round(6))
 
 # --- Plot loss curves ---
 fig, axes = plt.subplots(1, 3, figsize=(10, 3))
-for i, hist in enumerate(e2e_histories[:5]):
-    color = plt.cm.viridis(i / max(1, len(e2e_histories[:5]) - 1))
+n_plot = min(5, len(e2e_histories))
+for i in range(n_plot):
+    hist = e2e_histories[i]
+    sess_idx = train_indices[i] if i < len(train_indices) else i
+    color = plt.cm.viridis(i / max(1, n_plot - 1))
     axes[0].plot(hist['loss_total'], c=color, alpha=0.7, lw=0.5,
-                 label=f"S{i}")
+                 label=f"S{sess_idx}")
     axes[1].plot(hist['loss_infonce'], c=color, alpha=0.7, lw=0.5)
     axes[2].plot(hist['loss_dyn'], c=color, alpha=0.7, lw=0.5)
 
@@ -100,7 +103,7 @@ axes[2].set_ylabel("Dynamics MSE"); axes[2].set_xlabel("Epoch")
 axes[0].legend(fontsize=4, ncol=2)
 for ax in axes:
     ax.set_yscale('log')
-plt.suptitle("End-to-End Training Curves (first 5 sessions)",
+plt.suptitle(f"End-to-End Training Curves ({n_plot} sampled sessions)",
              y=1.02, fontsize=9, fontweight="bold")
 plt.tight_layout()
 for fmt in ["pdf", "png"]:

@@ -59,7 +59,7 @@ BATCH_SIZE = 512                # frames per batch (flattened)
 LR = 3e-4                       # learning rate
 WEIGHT_DECAY = 1e-6             # AdamW weight decay
 GRAD_CLIP = 1.0                 # gradient clipping norm
-TEMPERATURE = 0.1               # InfoNCE temperature (CEBRA default is 1.5; lower = sharper)
+TEMPERATURE = 0.1               # InfoNCE temperature (NB: CEBRA default is 1.5; lower=sharper contrast; this is a hidden variable in E2E vs baseline comparison)
 MIN_EPOCH_TIMEPOINTS = 200      # minimum timepoints per epoch
 MIN_EPOCHS_PER_COND = 1         # minimum epochs per condition
 N_SHUFFLES = 10                 # shuffle realizations for drive-shuffle control

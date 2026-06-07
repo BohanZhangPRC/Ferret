@@ -127,25 +127,37 @@ def compute_r2_drive_rollout(model, ep_n, ep_drive, dt=0.005,
 
 
 def compute_r2_drive_shuffle(model, ep_n, ep_drive, dt=0.005,
-                              window_len=None, n_windows=20, n_shuffles=10):
-    """E2E null control: drive time-shuffle on FIXED trained encoder.
+                              window_len=None, n_windows=5, n_shuffles=10):
+    """E2E null control: circular-shift drive on FIXED trained encoder.
 
-    Permutes the drive sequence, then computes R2_drive_rollout.  Averaged
-    across n_shuffles realizations.  This is the E2E analogue of the baseline
-    time-shuffle: the encoder + generator are held fixed (same philosophy as
-    "fixed CEBRA embedding, shuffled labels" in the two-stage pipeline).
+    Uses np.roll (circular shift) rather than np.random.permutation.
+    This PRESERVES the autocorrelation structure and power spectrum of the
+    drive signal x(t) (which is slowly-varying and highly autocorrelated),
+    destroying only the temporal ALIGNMENT with the neural state.  This is
+    the correct null: same distribution, same autocorrelation, random timing.
+
+    (cf. lie_algebra_method_description.md section 12.3 — permutation destroys
+    both alignment AND spectrum, confounding the null hypothesis.)
+
+    n_windows is reduced to 5 (vs 20 for the true R2_drive) to keep
+    validation time manageable: each shuffle is a full per-window
+    encode + rollout, and n_shuffles=10 × n_windows multiplies cost.
 
     Returns:
-        r2_drive_shuffle: float (mean across shuffles)
+        r2_drive_shuffle: float (mean across circular-shift realizations)
     """
     if window_len is None:
         window_len = VAL_ROLLOUT_LEN
 
+    T_drive = len(ep_drive)
+    if T_drive < 2:
+        return float('nan')
+
     vals = []
     for _ in range(n_shuffles):
-        # Permute drive along time axis
-        perm = np.random.permutation(len(ep_drive))
-        ep_drive_shuf = ep_drive[perm]
+        # Circular shift: preserves autocorrelation, destroys alignment
+        shift = np.random.randint(1, T_drive)
+        ep_drive_shuf = np.roll(ep_drive, shift, axis=0)
         r2d = compute_r2_drive_rollout(model, ep_n, ep_drive_shuf,
                                         dt=dt, window_len=window_len,
                                         n_windows=n_windows)

@@ -98,8 +98,13 @@ with open(out_path, "w") as f:
             f.write(f"  N sessions: {len(e2e_session_df)}\n")
             f.write(f"  Mean SR:           {e2e_session_df['SR'].mean():.4f} "
                     f"(sem={e2e_session_df['SR'].sem():.4f})\n")
-            f.write(f"  Mean |Real|:       {e2e_session_df['Eig_Real_Mean'].mean():.4f}\n")
-            f.write(f"  Mean |Imag|:       {e2e_session_df['Eig_Imag_Mean'].mean():.4f}\n")
+            f.write(f"  (Eigenvalues are per-session diagnostics in arbitrary\n")
+            f.write(f"   encoder-scale units — not comparable across sessions.\n")
+            f.write(f"   See per-session values in the table below.)\n")
+            f.write(f"  Per-session |Real|: "
+                    f"{e2e_session_df['Eig_Real_Mean'].round(4).tolist()}\n")
+            f.write(f"  Per-session |Imag|: "
+                    f"{e2e_session_df['Eig_Imag_Mean'].round(4).tolist()}\n")
             f.write("\n")
         if e2e_df is not None:
             f.write("--- Per-Condition R2_drive (held-out rollout) ---\n")

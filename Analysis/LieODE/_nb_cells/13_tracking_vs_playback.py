@@ -4,6 +4,13 @@
 # Note: SR/eigenvalues are from the shared session-level generator J(u)+L,
 # so Tracking/PB comparisons are only meaningful for R2_drive (held-out epochs).
 # SR/eig are reported as session-level summaries (pooled across conditions).
+#
+# CAVEAT — kinematic confound: drive is standardized across pooled TR+PB epochs.
+# If the animal moves less during Playback, the drive dynamic range is smaller,
+# which may systematically lower R2_drive_rollout for Playback INDEPENDENTLY of
+# neural computation.  Observed TR > PB differences cannot be attributed to
+# neural mechanisms unless velocity distributions are first shown comparable
+# (cf. lie_algebra_method_description.md section 12.9).
 
 if e2e_df is not None:
     print("=" * 60)

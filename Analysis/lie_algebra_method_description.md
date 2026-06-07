@@ -231,7 +231,7 @@ The OLS variant (`LIE_METHOD = "lstsq"`) and the PyTorch variant (`"pytorch"`) d
 ### A. Skewness Ratio (SR)
 
 $$
-\mathrm{SR} = \frac{\|J_{\mathrm{skew}}\|}{\|J_{\mathrm{ols}}\|}
+\mathrm{SR} = \frac{\lVert J_{\mathrm{skew}}\rVert}{\lVert J_{\mathrm{ols}}\rVert}
 $$
 
 Measures what fraction of the fitted generator is purely rotational (skew-symmetric). High SR indicates that the skew-symmetric component dominates the norm of $J_{\mathrm{ols}}$. **Coordinate-dependence caveat:** the skew/symmetric decomposition is only physically meaningful as "rotation vs. stretch" under an isotropic metric; CEBRA coordinates are not guaranteed to satisfy this condition (see §12.1). Interpret SR as a useful but coordinate-frame-dependent descriptor, not a frame-invariant geometric invariant.

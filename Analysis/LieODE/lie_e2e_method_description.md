@@ -248,7 +248,7 @@ If the true embedding's $R^2_{\mathrm{drive}}$ significantly exceeds the dummy e
 **Protocol**:
 1. Train the E2E model with $\lambda_{\mathrm{dyn}} = 0$ (pure InfoNCE, no dynamics loss).
 2. **Freeze the encoder**. Post-hoc fit the Lie algebra via OLS (`fit_lie_algebra_with_leak`) on the frozen embedding — this uses the **same estimator** as the baseline pipeline, enabling direct comparison.
-3. Compare $SR_{\mathrm{E2E}}$ vs. $SR_{\lambda=0}^{\mathrm{OLS}}$ and $R^2_{\mathrm{drive,\,E2E}}$ vs. $R^2_{\mathrm{drive},\,\lambda=0}^{\mathrm{OLS}}$.
+3. Compare $SR_{\mathrm{E2E}}$ vs. $SR_{\lambda=0}^{\mathrm{OLS}}$ and $R^2_{\mathrm{drive},\,\mathrm{E2E}}$ vs. $R^2_{\mathrm{drive},\,\lambda=0}^{\mathrm{OLS}}$.
 
 If $SR_{\mathrm{E2E}} > SR_{\lambda=0}^{\mathrm{OLS}}$, the dynamics constraint genuinely induces rotational structure. If they are comparable, InfoNCE alone may be sufficient.
 

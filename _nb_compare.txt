@@ -1,0 +1,24 @@
+=== LieAlgebra_CEBRA.ipynb ===
+  Cells: 29
+  R2_drive / partial R2                        : NO
+  Eigenvalue uses J_ols                        : YES
+  Timestamped output folder                    : NO
+  plt.savefig                                  : NO
+  CEBRA dim in config                          : YES
+  Summary txt cell                             : NO
+  pv_cond for Track-vs-PB                      : NO
+  r2_drive_sh averaged across shuffles         : NO
+  10 shuffles per epoch                        : YES
+
+=== Skieur_LieAlgebra_CEBRA.ipynb ===
+  Cells: 32
+  R2_drive / partial R2                        : YES
+  Eigenvalue uses J_ols                        : YES
+  Timestamped output folder                    : YES
+  plt.savefig                                  : YES
+  CEBRA dim in config                          : YES
+  Summary txt cell                             : NO
+  pv_cond for Track-vs-PB                      : YES
+  r2_drive_sh averaged across shuffles         : YES
+  10 shuffles per epoch                        : YES
+

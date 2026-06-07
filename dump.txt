@@ -1,0 +1,4306 @@
+--- Cell 1 ---
+1: # pip install pandas
+--- Cell 2 ---
+1: import os
+2: from tqdm import tqdm
+3: import numpy as np
+4: import matplotlib.pyplot as plt
+5: import pandas as pd
+6: from scipy.ndimage import gaussian_filter
+7: def get_data(all_sessions_path, dt, gc_or_not=True):
+8:     # gc = True si A1, si PMC alors False
+9:     # Initialisation
+10:     n_data_s = []
+11:     f_data_s = []
+12:     neuron_ids_s = []
+13:     global_id = 0
+14: 
+15:     for file in tqdm(all_sessions_path):
+16:         print(file)
+17:         try:
+18:             # Chargement
+19:             n_data = np.load(os.path.join(file, f'data_{dt}.npy'))
+20:             f_data_raw = np.load(os.path.join(file, f'features_{dt}.npy'), allow_pickle=True)
+21:             if gc_or_not:
+22:                 gc = np.load(os.path.join(file, 'good_clusters.npy'))
+23:             else:
+24:                 gc = np.arange(len(n_data))
+25:             unique_tones_path = r"C:\Users\PenPen\Desktop\Ferret\Data\Bohan\unique_tones\unique_tones.npy"
+26:             try:
+27:                 unique_tones = np.load(unique_tones_path)
+28:             except FileNotFoundError:
+29:                 print(f"Unique tones file not found at path: {unique_tones_path}")
+30:                 raise
+31:             # Neurones valides
+32:             n_data = n_data[gc, :].astype(float)
+33: 
+34:             # Construction DataFrame
+35:             f_data_dict = {
+36:                 'Played_frequency': [],
+37:                 'Condition': [],
+38:                 'Block': [],
+39:                 'Frequency_changes': [],
+40:                 'Mock_frequency': [],
+41:                 'Mock_change': []
+42:             }
+43:             for item in f_data_raw:
+44:                 for key, value in item.items():
+45:                     f_data_dict[key].append(value)
+46:             f_data = pd.DataFrame(f_data_dict)
+47: 
+48:             # IDs des neurones
+49:             N_neurons = len(n_data)
+50:             neuron_ids = list(range(global_id, global_id + N_neurons))
+51:             global_id += N_neurons
+52:             neuron_ids_s.append(neuron_ids)
+53: 
+54:             # Direction
+55:             #f_data['Change_direction'] = compare_diff(f_data['Played_frequency'].to_numpy())
+56:             #f_data['Mock_direction'] = compare_diff(f_data['Mock_frequency'].to_numpy())
+57: 
+58:             # --- mapping des fréquences vers pixels ---
+59:             unique_tones_sorted = np.sort(unique_tones)
+60:             pixels_sorted = np.linspace(0, 28, len(unique_tones_sorted))  # 28 cm
+61: 
+62:             # --- choisir Played ou Mock selon la condition ---
+63:             positional_freq = np.where(
+64:                 f_data['Condition'].isin([0, -1]),
+65:                 f_data['Played_frequency'],
+66:                 f_data['Mock_frequency']
+67:             )
+68: 
+69:             # --- interpolation pour toutes les fréquences inconnues ---
+70:             positions = np.interp(positional_freq, unique_tones_sorted, pixels_sorted)
+71: 
+72:             # --- lissage ---
+73:             pos_smooth = gaussian_filter(positions, sigma=10)
+74: 
+75:             # --- calcul de Speed_x ---
+76:             speed_x = np.diff(pos_smooth)
+77:             speed_x = np.append(0, speed_x)
+78:             speed_x = np.abs(speed_x) * 100
+79:             speed_x[~np.isfinite(speed_x)] = 0  # supprime NaN / inf
+80:             f_data['Speed_x'] = speed_x
+81: 
+82:             # --- calcul de Sound_speed ---
+83:             freq = np.array(f_data['Played_frequency'])
+84:             freq_pos = np.interp(freq, unique_tones_sorted, pixels_sorted)
+85:             freq_pos_smooth = gaussian_filter(freq_pos, sigma=10)
+86:             sound_speed = np.diff(freq_pos_smooth)
+87:             sound_speed = np.append(0, sound_speed)
+88:             sound_speed = np.abs(sound_speed) * 100
+89:             sound_speed[~np.isfinite(sound_speed)] = 0
+90:             f_data['Sound_speed'] = sound_speed
+91:             f_data['Position'] = pos_smooth
+92:             f_data['Freq_position'] = freq_pos_smooth  # les positions correspondantes aux fréquences jouées
+93: 
+94:             speed_bins = [0, 0.01, 1, 2, 3, 4, 5, 6, np.inf]
+95:             f_data['Speed_bin'] = pd.cut(
+96:                 f_data['Speed_x'],
+97:                 bins=speed_bins,
+98:                 labels=False,
+99:                 include_lowest=True
+100:             )
+101:             acc_x = np.diff(speed_x, prepend=speed_x[0])
+102:             f_data["Acc_x"] = acc_x
+103: 
+104:             # smooth n_data
+105:             n_data_o = n_data - n_data.mean(axis=1, keepdims=True)
+106:             n_data_smooth = gaussian_filter(n_data_o, sigma=1, axes=1)
+107:             # Sauvegarde
+108:             n_data_s.append(n_data_smooth)
+109:             f_data_s.append(f_data)
+110: 
+111:         except Exception as e:
+112:             print(f"Error for file {file}: {e}")
+113:     return n_data_s, f_data_s
+--- Cell 3 ---
+1: import os
+2: 
+3: base_path = r"C:\Users\PenPen\Desktop\Ferret\Data\Bohan"
+4: 
+5: all_sessions_path = [
+6:     os.path.join(base_path, name) 
+7:     for name in os.listdir(base_path) 
+8:     if os.path.isdir(os.path.join(base_path, name))
+9: ]
+10: 
+11: all_sessions_path[:2]
+--- Cell 5 ---
+1: 
+2: dt = 0.005
+3: #gc_or_not = True (if you only want the good clusters... keep it True)
+4: n_data_s, f_data_s = get_data(all_sessions_path, dt, gc_or_not= True)
+5: 
+--- Cell 6 ---
+1: # 1. Setup Parameters
+2: t_window_pre = 0.32
+3: t_window_post = 0.22
+4: 
+5: n_bins_pre = int(t_window_pre / dt)
+6: n_bins_post = int(t_window_post / dt)
+7: expected_length = n_bins_pre + n_bins_post
+8: 
+--- Cell 7 ---
+1: for n_data, f_data in zip(n_data_s, f_data_s):
+2:     print(f_data.groupby(['Block', 'Condition', 'Frequency_changes']).size())
+--- Cell 8 ---
+1: for n_data, f_data in zip(n_data_s, f_data_s):
+2:     print(f_data[(f_data['Block'] == 5) & (f_data['Condition'] == 1) & (f_data['Frequency_changes'] == 1)].shape[0])
+--- Cell 10 ---
+1: 
+2: # List to collect individual NEURON means (PSTHs) from all sessions
+3: all_neuron_means = []
+4: 
+5: # 2. Loop through all sessions 
+6: for n_data, f_data in zip(n_data_s, f_data_s):
+7:     
+8:     event_playback = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+9:     
+10:     # Store events specifically for THIS session
+11:     session_events = [] 
+12:     
+13:     for i in event_playback:
+14:         start = int(i - n_bins_pre)
+15:         stop = int(i + n_bins_post)
+16:         
+17:         if start >= 0 and stop <= n_data.shape[-1]:
+18:             # segment shape: (n_channels, expected_length)
+19:             segment = n_data[:, start:stop]
+20:             if segment.shape[1] == expected_length:
+21:                 session_events.append(segment)
+22:     
+23:     # If we found valid events in this session
+24:     if len(session_events) > 0:
+25:         # Stack to shape: (n_events, n_channels, expected_length)
+26:         session_stack = np.stack(session_events, axis=0)
+27:         
+28:         # STEP 1: Average across multiple events (axis=0)
+29:         # Resulting shape: (n_channels, expected_length)
+30:         # This represents the average trace for each individual channel in this session
+31:         session_channel_means = np.mean(session_stack, axis=0)
+32:         
+33:         # Append these channel means to our global list
+34:         all_neuron_means.append(session_channel_means)
+35: 
+36: # 3. Combine all 16 sessions * ~32 channels and Calculate Grand Average
+37: if len(all_neuron_means) > 0:
+38:     # Concatenate along axis=0 (the channel dimension)
+39:     # Using concatenate because one session might have 32 channels, another 31, etc.
+40:     # Resulting shape: (Total_Channels_Across_All_Sessions, expected_length)
+41:     final_pool = np.concatenate(all_neuron_means, axis=0)
+42:     
+43:     # STEP 2: Calculate the population mean across all 16*32 channels
+44:     # Resulting shape: (expected_length,)
+45:     mean_playback = np.mean(final_pool, axis=0)
+46:     
+47:     # Calculate Standard Error (SEM) based on the number of CHANNELS, not events
+48:     sem_playback = np.std(final_pool, axis=0) / np.sqrt(final_pool.shape[0])
+49:     
+50:     print(f"Successfully collected averaged traces from {final_pool.shape[0]} individual channels/neurons.")
+51:     print(f"Mean trajectory calculated with shape: {mean_playback.shape}")
+52: else:
+53:     print("No valid events found.")
+--- Cell 11 ---
+1: mean_playback
+--- Cell 12 ---
+1: 
+2: 
+3: # 1. Create the time axis
+4: # Ensure the length matches mean_playback (n_bins_pre + n_bins_post)
+5: time = np.arange(-n_bins_pre, n_bins_post) * dt
+6: 
+7: # 2. Compatibility check: 
+8: # Option 1 output 'mean_playback' is already a 1D array (the Global Average).
+9: # We can wrap it in a Series or DataFrame for easy handling.
+10: df_plot = pd.DataFrame({'Global_Avg': mean_playback}, index=time)
+11: 
+12: # 3. Plotting
+13: plt.figure(figsize=(8, 5))
+14: 
+15: # Plot the 1D mean directly
+16: plt.plot(df_plot.index, df_plot['Global_Avg'], 
+17:          color='black', linewidth=2.5, label='Block 5 Playback (Global Avg)')
+18: 
+19: # 4. Formatting
+20: plt.axvline(0, color='black', linestyle='--', label='Event')
+21: plt.title(f'Playback Average Neural Response (Pooled Across {final_pool.shape[0]} neuron samples)', fontsize=14)
+22: plt.xlabel('Time relative to event (s)', fontsize=12)
+23: plt.ylabel('Mean Activity (Firing Rate)', fontsize=12)
+24: plt.grid(True, alpha=0.3)
+25: plt.legend()
+26: plt.tight_layout()
+27: 
+28: # Save or display
+29: # plt.savefig('global_average_response.png')
+30: plt.show()
+--- Cell 14 ---
+1: # Lists to collect means for each neuron/channel from all sessions
+2: all_neuron_means_playback = []
+3: all_neuron_means_tracking = []
+4: 
+5: # 2. Loop through all sessions 
+6: for n_data, f_data in zip(n_data_s, f_data_s):
+7:     
+8:     # Get event indices for both conditions
+9:     event_playback = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+10:     event_tracking = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+11:     
+12:     # --- Helper function: extract average response for current session ---
+13:     def get_session_channel_means(event_indices):
+14:         session_events = []
+15:         for i in event_indices:
+16:             start = int(i - n_bins_pre)
+17:             stop = int(i + n_bins_post)
+18:             if start >= 0 and stop <= n_data.shape[-1]:
+19:                 segment = n_data[:, start:stop]
+20:                 if segment.shape[1] == expected_length:
+21:                     session_events.append(segment)
+22:         if len(session_events) > 0:
+23:             session_stack = np.stack(session_events, axis=0)
+24:             return np.mean(session_stack, axis=0) # shape: (n_channels, expected_length)
+25:         return None
+26:     # -------------------------------------------------------------
+27:     
+28:     # Extract Playback and append to list
+29:     pb_means = get_session_channel_means(event_playback)
+30:     if pb_means is not None:
+31:         all_neuron_means_playback.append(pb_means)
+32:         
+33:     # Extract Tracking and append to list
+34:     tr_means = get_session_channel_means(event_tracking)
+35:     if tr_means is not None:
+36:         all_neuron_means_tracking.append(tr_means)
+37: 
+38: # 3. Combine and Calculate Grand Averages for BOTH conditions
+39: # Playback
+40: if len(all_neuron_means_playback) > 0:
+41:     final_pool_pb = np.concatenate(all_neuron_means_playback, axis=0)
+42:     mean_playback = np.mean(final_pool_pb, axis=0)
+43:     sem_playback = np.std(final_pool_pb, axis=0) / np.sqrt(final_pool_pb.shape[0])
+44:     print(f"Playback: {final_pool_pb.shape[0]} neurons pooled.")
+45: 
+46: # Tracking
+47: if len(all_neuron_means_tracking) > 0:
+48:     final_pool_tr = np.concatenate(all_neuron_means_tracking, axis=0)
+49:     mean_tracking = np.mean(final_pool_tr, axis=0)
+50:     sem_tracking = np.std(final_pool_tr, axis=0) / np.sqrt(final_pool_tr.shape[0])
+51:     print(f"Tracking: {final_pool_tr.shape[0]} neurons pooled.")
+--- Cell 15 ---
+1: mean_playback
+--- Cell 16 ---
+1: # Create time axis
+2: time = np.arange(-n_bins_pre, n_bins_post) * dt
+3: 
+4: plt.figure(figsize=(9, 6))
+5: 
+6: # Plot Playback curve and shaded error
+7: plt.plot(time, mean_playback, color='black', linewidth=2.5, label='Playback')
+8: plt.fill_between(time, 
+9:                  mean_playback - sem_playback, 
+10:                  mean_playback + sem_playback, 
+11:                  color='black', alpha=0.2, label='SEM-Playback')
+12: 
+13: # Plot Tracking curve and shaded error
+14: plt.plot(time, mean_tracking, color='red', linewidth=2.5, label='Tracking')
+15: plt.fill_between(time, 
+16:                  mean_tracking - sem_tracking, 
+17:                  mean_tracking + sem_tracking, 
+18:                  color='red', alpha=0.2, label='SEM-Tracking')
+19: 
+20: # Figure decorations
+21: plt.axvline(0, color='black', linestyle='--', label='Event Trigger')
+22: plt.title(f'Population Neural Response: Playback ({final_pool_pb.shape[0]} neurons) vs Tracking ({final_pool_tr.shape[0]} neurons) (bin = {dt}s)', fontsize=14)
+23: plt.xlabel('Time relative to event (s)', fontsize=12)
+24: plt.ylabel('Mean Activity (Firing Rate)', fontsize=12)
+25: plt.grid(True, alpha=0.3)
+26: plt.legend()
+27: plt.tight_layout()
+28: 
+29: plt.show()
+--- Cell 17 ---
+1: # Iterate through the list of DataFrames (f_data_s)
+2: for i, f_data in enumerate(f_data_s):
+3:     # Get the session folder name from the path list if available
+4:     session_name = os.path.basename(all_sessions_path[i])
+5:     
+6:     print(f"--- Session {i}: {session_name} ---")
+7:     
+8:     # Check if 'Block' column exists
+9:     if 'Block' in f_data.columns:
+10:         # Sort by block index (e.g., Block 1, 2, 3...)
+11:         block_counts = f_data['Block'].value_counts().sort_index()
+12:         print(block_counts)
+13:     else:
+14:         print("Column 'Block' not found in this session.")
+15:     print("\n")
+--- Cell 19 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: 
+5: # Containers for the 4 groups
+6: # Format: (First/Last) Block x (Playback/Tracking) Condition
+7: data_groups = {
+8:     'first_playback': [], 'first_tracking': [],
+9:     'last_playback': [], 'last_tracking': []
+10: }
+11: 
+12: # 2. Helper function to get channel means for specific criteria
+13: def get_channel_means(n_data, f_data, block_id, condition_id):
+14:     events = np.flatnonzero((f_data['Block'] == block_id) & 
+15:                            (f_data['Condition'] == condition_id) & 
+16:                            (f_data['Frequency_changes'] == 1))
+17:     
+18:     segments = []
+19:     for i in events:
+20:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+21:         if 0 <= start and stop <= n_data.shape[-1]:
+22:             seg = n_data[:, start:stop]
+23:             if seg.shape[1] == expected_length:
+24:                 segments.append(seg)
+25:     
+26:     if len(segments) > 0:
+27:         return np.mean(np.stack(segments), axis=0) # Mean per channel
+28:     return None
+29: 
+30: # 3. Main Processing Loop
+31: for n_data, f_data in zip(n_data_s, f_data_s):
+32:     # Find blocks that have BOTH condition 0 and 1
+33:     blocks_with_both = []
+34:     for b in sorted(f_data['Block'].unique()):
+35:         has_cond0 = not f_data[(f_data['Block'] == b) & (f_data['Condition'] == 0)].empty
+36:         has_cond1 = not f_data[(f_data['Block'] == b) & (f_data['Condition'] == 1)].empty
+37:         if has_cond0 and has_cond1:
+38:             blocks_with_both.append(b)
+39:             
+40:     if len(blocks_with_both) < 1:
+41:         continue # Skip session if no block meets criteria
+42:         
+43:     first_b = blocks_with_both[0]
+44:     last_b = blocks_with_both[-1]
+45:     
+46:     # Extract for First Block
+47:     fp = get_channel_means(n_data, f_data, first_b, 1)
+48:     ft = get_channel_means(n_data, f_data, first_b, 0)
+49:     if fp is not None: data_groups['first_playback'].append(fp)
+50:     if ft is not None: data_groups['first_tracking'].append(ft)
+51:         
+52:     # Extract for Last Block (only if it's different, or include anyway)
+53:     lp = get_channel_means(n_data, f_data, last_b, 1)
+54:     lt = get_channel_means(n_data, f_data, last_b, 0)
+55:     if lp is not None: data_groups['last_playback'].append(lp)
+56:     if lt is not None: data_groups['last_tracking'].append(lt)
+57: 
+58: # 4. Calculate Final Means and SEMs
+59: results = {}
+60: for key, list_of_means in data_groups.items():
+61:     if list_of_means:
+62:         combined = np.concatenate(list_of_means, axis=0)
+63:         results[key] = {
+64:             'mean': np.mean(combined, axis=0),
+65:             'sem': np.std(combined, axis=0) / np.sqrt(combined.shape[0])
+66:         }
+67: 
+68: 
+--- Cell 20 ---
+1: results = {}
+2: for key, list_of_means in data_groups.items():
+3:     if list_of_means:
+4:         combined = np.concatenate(list_of_means, axis=0)
+5:         results[key] = {
+6:             'mean': np.mean(combined, axis=0),
+7:             'sem': np.std(combined, axis=0) / np.sqrt(combined.shape[0]),
+8:             'count': combined.shape[0]  # <--- 关键：把神经元数量存下来
+9:         }
+10: 
+11: # 创建两个并排的子图
+12: fig, axes = plt.subplots(1, 2, figsize=(16, 10), sharey=0)
+13: 
+14: # --- 左图：First Block ---
+15: ax1 = axes[0]
+16: n_pb_first = results['first_playback']['count']
+17: n_tr_first = results['first_tracking']['count']
+18: 
+19: ax1.plot(time, results['first_playback']['mean'], color='black', linewidth=2.5, 
+20:          label=f'Playback (n={n_pb_first})') # 在图例显示数量
+21: ax1.plot(time, results['first_tracking']['mean'], color='red', linewidth=2.5, 
+22:          label=f'Tracking (n={n_tr_first})')
+23: ax1.fill_between(time, 
+24:                  results['first_tracking']['mean'] - results['first_tracking']['sem'], 
+25:                  results['first_tracking']['mean'] + results['first_tracking']['sem'], 
+26:                  color='red', alpha=0.2, label='SEM-Tracking')
+27: ax1.fill_between(time, 
+28:                  results['first_playback']['mean'] - results['first_playback']['sem'], 
+29:                  results['first_playback']['mean'] + results['first_playback']['sem'], 
+30:                  color='black', alpha=0.2, label='SEM-Playback')                 
+31: ax1.set_title(f'First Block\n(n={n_tr_first} neurons)', fontsize=14)
+32: 
+33: 
+34: # --- 右图：Last Block ---
+35: ax2 = axes[1]
+36: n_pb_last = results['last_playback']['count']
+37: n_tr_last = results['last_tracking']['count']
+38: 
+39: ax2.plot(time, results['last_playback']['mean'], color='black', linewidth=2.5, 
+40:          label=f'Playback (n={n_pb_last})')
+41: ax2.plot(time, results['last_tracking']['mean'], color='red', linewidth=2.5, 
+42:          label=f'Tracking (n={n_tr_last})')
+43: ax2.fill_between(time, 
+44:                  results['last_tracking']['mean'] - results['last_tracking']['sem'], 
+45:                  results['last_tracking']['mean'] + results['last_tracking']['sem'], 
+46:                  color='red', alpha=0.2)
+47: ax2.fill_between(time, 
+48:                  results['last_playback']['mean'] - results['last_playback']['sem'], 
+49:                  results['last_playback']['mean'] + results['last_playback']['sem'], 
+50:                  color='black', alpha=0.2)
+51: 
+52: ax2.set_title(f'Last Block\n(n={n_tr_last} neurons)', fontsize=14)
+53: 
+54: 
+55: # --- 总标题修改 ---
+56: # 如果你想在总标题显示总数，可以直接取一个代表性的数字
+57: plt.suptitle(f'Neural Response Comparison: Tracking (Red) vs Playback (Black) (bin = {dt}s)', 
+58:              fontsize=16, y=1.05)
+59: 
+60: # --- 通用格式设置 ---
+61: for ax in axes:
+62:     ax.axvline(0, color='gray', linestyle='--', alpha=0.7, label='Event')
+63:     ax.set_xlabel('Time relative to event (s)', fontsize=12)
+64:     ax.set_ylabel('Firing Rate', fontsize=12)
+65:     ax.grid(True, alpha=0.2)
+66:     ax.legend(loc='upper right')
+67: 
+68: plt.tight_layout()
+69: plt.show()
+--- Cell 21 ---
+1: 
+2: # 1. 计算差值 (Last - First) 和 误差传递 (Error Propagation)
+3: # Playback Difference
+4: diff_pb_mean = results['last_playback']['mean'] - results['first_playback']['mean']
+5: diff_pb_sem = np.sqrt(results['first_playback']['sem']**2 + results['last_playback']['sem']**2)
+6: 
+7: # Tracking Difference
+8: diff_tr_mean = results['last_tracking']['mean'] - results['first_tracking']['mean']
+9: diff_tr_sem = np.sqrt(results['first_tracking']['sem']**2 + results['last_tracking']['sem']**2)
+10: 
+11: # 2. 设置画布：3行1列
+12: fig, axes = plt.subplots(3, 1, figsize=(10, 18), sharex=True)
+13: 
+14: # --- Top Plot: First Block ---
+15: ax1 = axes[0]
+16: ax1.plot(time, results['first_playback']['mean'], color='black', linewidth=2, label='Playback')
+17: ax1.fill_between(time, results['first_playback']['mean'] - results['first_playback']['sem'], 
+18:                  results['first_playback']['mean'] + results['first_playback']['sem'], color='black', alpha=0.1)
+19: ax1.plot(time, results['first_tracking']['mean'], color='red', linewidth=2, label='Tracking')
+20: ax1.fill_between(time, results['first_tracking']['mean'] - results['first_tracking']['sem'], 
+21:                  results['first_tracking']['mean'] + results['first_tracking']['sem'], color='red', alpha=0.1)
+22: ax1.set_title(f"First Common Block (n={results['first_tracking']['count']} neurons)", fontsize=14)
+23: 
+24: # --- Middle Plot: Last Block ---
+25: ax2 = axes[1]
+26: ax2.plot(time, results['last_playback']['mean'], color='black', linewidth=2, label='Playback')
+27: ax2.fill_between(time, results['last_playback']['mean'] - results['last_playback']['sem'], 
+28:                  results['last_playback']['mean'] + results['last_playback']['sem'], color='black', alpha=0.1)
+29: ax2.plot(time, results['last_tracking']['mean'], color='red', linewidth=2, label='Tracking')
+30: ax2.fill_between(time, results['last_tracking']['mean'] - results['last_tracking']['sem'], 
+31:                  results['last_tracking']['mean'] + results['last_tracking']['sem'], color='red', alpha=0.1)
+32: ax2.set_title(f"Last Common Block (n={results['last_tracking']['count']} neurons)", fontsize=14)
+33: 
+34: # --- Bottom Plot: Difference (Last - First) ---
+35: ax3 = axes[2]
+36: # 绘制 Playback 差值
+37: ax3.plot(time, diff_pb_mean, color='black', linewidth=2.5, label='Playback Difference')
+38: # ax3.fill_between(time, diff_pb_mean - diff_pb_sem, diff_pb_mean + diff_pb_sem, color='black', alpha=0.1)
+39: 
+40: # 绘制 Tracking 差值
+41: ax3.plot(time, diff_tr_mean, color='red', linewidth=2.5, label='Tracking Difference')
+42: # ax3.fill_between(time, diff_tr_mean - diff_tr_sem, diff_tr_mean + diff_tr_sem, color='red', alpha=0.1)
+43: 
+44: # 在差值图增加 y=0 的水平基准线，方便看增减
+45: ax3.axhline(0, color='blue', linestyle=':', alpha=0.5)
+46: ax3.set_title("Difference (Last Block - First Block)", fontsize=14)
+47: ax3.set_ylabel('$\Delta$ Firing Rate', fontsize=12)
+48: 
+49: # --- 通用格式设置 ---
+50: for ax in axes:
+51:     ax.axvline(0, color='gray', linestyle='--', alpha=0.7)
+52:     ax.set_xlabel('Time relative to event (s)', fontsize=12)
+53:     ax.set_ylabel('Firing Rate', fontsize=12)
+54:     ax.grid(True, alpha=0.2)
+55:     ax.legend(loc='upper right', fontsize=10)
+56: 
+57: plt.suptitle(f'Neural Dynamics: First vs Last Block with Difference (bin = {dt}s)', fontsize=16, y=0.99)
+58: plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+59: plt.show()
+--- Cell 23 ---
+1: # 1. Setup Parameters (re-using your existing variables if already defined)
+2: time = np.arange(-n_bins_pre, n_bins_post) * dt
+3: n_triggers = 1  # Number of events to take from each condition for the subset analysis
+4: 
+5: # Lists to collect means for each channel across sessions
+6: means_first_n_pb = []
+7: means_last_n_tr = []
+8: 
+9: # 2. Helper function to extract and average segments for specific event indices
+10: def get_subset_channel_means(n_data, event_indices):
+11:     segments = []
+12:     for i in event_indices:
+13:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+14:         if 0 <= start and stop <= n_data.shape[-1]:
+15:             seg = n_data[:, start:stop]
+16:             if seg.shape[1] == expected_length:
+17:                 segments.append(seg)
+18:                 
+19:     if len(segments) > 0:
+20:         return np.mean(np.stack(segments, axis=0), axis=0) # Mean per channel
+21:     return None
+22: 
+23: # 3. Process each session
+24: for n_data, f_data in zip(n_data_s, f_data_s):
+25:     # Get all valid events for Playback (Condition 1) and Tracking (Condition 0)
+26:     events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+27:     events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+28:     
+29:     # Subset: First 100 Playback, Last 100 Tracking
+30:     events_pb_subset = events_pb[:n_triggers] if len(events_pb) >= n_triggers else events_pb
+31:     events_tr_subset = events_tr[-n_triggers:] if len(events_tr) >= n_triggers else events_tr
+32:     
+33:     # Extract and store
+34:     pb_mean = get_subset_channel_means(n_data, events_pb_subset)
+35:     tr_mean = get_subset_channel_means(n_data, events_tr_subset)
+36:     
+37:     if pb_mean is not None: means_first_n_pb.append(pb_mean)
+38:     if tr_mean is not None: means_last_n_tr.append(tr_mean)
+39: 
+40: # 4. Calculate Grand Averages
+41: final_pb = np.concatenate(means_first_n_pb, axis=0)
+42: final_tr = np.concatenate(means_last_n_tr, axis=0)
+43: 
+44: res_pb = {
+45:     'mean': np.mean(final_pb, axis=0),
+46:     'sem': np.std(final_pb, axis=0) / np.sqrt(final_pb.shape[0]),
+47:     'count': final_pb.shape[0]
+48: }
+49: 
+50: res_tr = {
+51:     'mean': np.mean(final_tr, axis=0),
+52:     'sem': np.std(final_tr, axis=0) / np.sqrt(final_tr.shape[0]),
+53:     'count': final_tr.shape[0]
+54: }
+55: 
+56: # Calculate Difference (Tracking - Playback)
+57: diff_mean = res_tr['mean'] - res_pb['mean']
+58: # Standard error of the difference
+59: diff_sem = np.sqrt(res_tr['sem']**2 + res_pb['sem']**2)
+60: 
+61: # 5. Plotting
+62: fig, axes = plt.subplots(2, 1, figsize=(10, 12), sharex=True)
+63: 
+64: # --- Top Plot: Overlaid Means ---
+65: ax1 = axes[0]
+66: ax1.plot(time, res_pb['mean'], color='black', linewidth=2.5, 
+67:          label=f"First {n_triggers} Playback (n={res_pb['count']})")
+68: ax1.fill_between(time, res_pb['mean'] - res_pb['sem'], res_pb['mean'] + res_pb['sem'], 
+69:                  color='black', alpha=0.15)
+70: 
+71: ax1.plot(time, res_tr['mean'], color='red', linewidth=2.5, 
+72:          label=f"Last {n_triggers} Tracking (n={res_tr['count']})")
+73: ax1.fill_between(time, res_tr['mean'] - res_tr['sem'], res_tr['mean'] + res_tr['sem'], 
+74:                  color='red', alpha=0.15)
+75: 
+76: ax1.set_title(f"Neural Response: Last {n_triggers} Tracking vs First {n_triggers} Playback", fontsize=14)
+77: ax1.set_ylabel('Firing Rate', fontsize=12)
+78: 
+79: # --- Bottom Plot: Difference ---
+80: ax2 = axes[1]
+81: ax2.plot(time, diff_mean, color='purple', linewidth=2.5, label='Difference (Tracking - Playback)')
+82: ax2.fill_between(time, diff_mean - diff_sem, diff_mean + diff_sem, color='purple', alpha=0.15)
+83: ax2.axhline(0, color='gray', linestyle=':', linewidth=2, alpha=0.8)
+84: 
+85: ax2.set_title("Response Difference", fontsize=14)
+86: ax2.set_xlabel('Time relative to event (s)', fontsize=12)
+87: ax2.set_ylabel('$\Delta$ Firing Rate', fontsize=12)
+88: 
+89: # Format both axes
+90: for ax in axes:
+91:     ax.axvline(0, color='gray', linestyle='--', alpha=0.7, label='Event Trigger' if ax == ax1 else "")
+92:     ax.grid(True, alpha=0.2)
+93:     ax.legend(loc='upper right')
+94: 
+95: plt.tight_layout()
+96: plt.show()
+--- Cell 24 ---
+1: import matplotlib.ticker as ticker
+2: # Define indices for calculating metrics
+3: # Baseline: 0.2s before frequency change
+4: baseline_bins = int(0.2 / dt)
+5: idx_base_start = n_bins_pre - baseline_bins
+6: idx_base_end = n_bins_pre  # Frequency change (time 0)
+7: 
+8: # Peak: Max response after frequency change
+9: idx_peak_start = n_bins_pre
+10: idx_peak_end = expected_length
+11: 
+12: # Define the different "n_triggers" (number of events) you want to evaluate
+13: n_triggers_list = [1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 200, 300, 500]
+14: 
+15: # Dictionary to store the results
+16: results_metrics = {
+17:     'n_events': [],
+18:     'pb_baseline': [], 'pb_peak': [], 'pb_evoked': [],
+19:     'tr_baseline': [], 'tr_peak': [], 'tr_evoked': []
+20: }
+21: 
+22: # Helper function to extract and average segments
+23: def get_subset_channel_means(n_data, event_indices):
+24:     segments = []
+25:     for i in event_indices:
+26:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+27:         if 0 <= start and stop <= n_data.shape[-1]:
+28:             seg = n_data[:, start:stop]
+29:             if seg.shape[1] == expected_length:
+30:                 segments.append(seg)
+31:     if len(segments) > 0:
+32:         return np.mean(np.stack(segments, axis=0), axis=0) 
+33:     return None
+34: 
+35: # 2. Main Processing Loop
+36: for n_b in n_triggers_list:
+37:     means_first_n_pb = []
+38:     means_last_n_tr = []
+39:     
+40:     for n_data, f_data in zip(n_data_s, f_data_s):
+41:         events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+42:         events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+43:         
+44:         # Subset: First n_b Playback, Last n_b Tracking
+45:         events_pb_subset = events_pb[:n_b] if len(events_pb) >= n_b else events_pb
+46:         events_tr_subset = events_tr[-n_b:] if len(events_tr) >= n_b else events_tr
+47:         
+48:         pb_mean = get_subset_channel_means(n_data, events_pb_subset)
+49:         tr_mean = get_subset_channel_means(n_data, events_tr_subset)
+50:         
+51:         if pb_mean is not None: means_first_n_pb.append(pb_mean)
+52:         if tr_mean is not None: means_last_n_tr.append(tr_mean)
+53: 
+54:     # Calculate Grand Averages for this n_b
+55:     final_pb = np.concatenate(means_first_n_pb, axis=0)
+56:     final_tr = np.concatenate(means_last_n_tr, axis=0)
+57:     
+58:     mean_pb_trace = np.mean(final_pb, axis=0)
+59:     mean_tr_trace = np.mean(final_tr, axis=0)
+60:     
+61:     # --- Calculate Metrics for Playback ---
+62:     pb_base = np.mean(mean_pb_trace[idx_base_start:idx_base_end])
+63:     pb_pk = np.max(mean_pb_trace[idx_peak_start:idx_peak_end])
+64:     pb_evk = pb_pk - pb_base
+65:     
+66:     # --- Calculate Metrics for Tracking ---
+67:     tr_base = np.mean(mean_tr_trace[idx_base_start:idx_base_end])
+68:     tr_pk = np.max(mean_tr_trace[idx_peak_start:idx_peak_end])
+69:     tr_evk = tr_pk - tr_base
+70:     
+71:     # Store results
+72:     results_metrics['n_events'].append(n_b)
+73:     results_metrics['pb_baseline'].append(pb_base)
+74:     results_metrics['pb_peak'].append(pb_pk)
+75:     results_metrics['pb_evoked'].append(pb_evk)
+76:     results_metrics['tr_baseline'].append(tr_base)
+77:     results_metrics['tr_peak'].append(tr_pk)
+78:     results_metrics['tr_evoked'].append(tr_evk)
+79: 
+80: # 3. Create a DataFrame for easy viewing
+81: df_metrics = pd.DataFrame(results_metrics)
+82: display(df_metrics)
+83: 
+84: # 4. Plotting the metrics across different subset sizes
+85: fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+86: 
+87: # Baseline Plot
+88: axes[0].plot(df_metrics['n_events'], df_metrics['pb_baseline'], marker='o', color='black', label='Playback')
+89: axes[0].plot(df_metrics['n_events'], df_metrics['tr_baseline'], marker='o', color='red', label='Tracking')
+90: axes[0].set_title('Baseline (-0.2s to 0s)')
+91: axes[0].set_ylabel('Mean Firing Rate')
+92: 
+93: # Peak Plot
+94: axes[1].plot(df_metrics['n_events'], df_metrics['pb_peak'], marker='o', color='black', label='Playback')
+95: axes[1].plot(df_metrics['n_events'], df_metrics['tr_peak'], marker='o', color='red', label='Tracking')
+96: axes[1].set_title('Peak Response')
+97: 
+98: # Total Evoked Response Plot
+99: axes[2].plot(df_metrics['n_events'], df_metrics['pb_evoked'], marker='o', color='black', label='Playback')
+100: axes[2].plot(df_metrics['n_events'], df_metrics['tr_evoked'], marker='o', color='red', label='Tracking')
+101: axes[2].set_title('Total Evoked Response (Peak - Baseline)')
+102: 
+103: for ax in axes:
+104:     # Set x-axis to logarithmic scale
+105:     ax.set_xscale('log')
+106:     
+107:     # Force the x-ticks to be exactly your n_triggers_list values
+108:     ax.set_xticks(n_triggers_list)
+109:     ax.get_xaxis().set_major_formatter(ticker.ScalarFormatter())
+110:     
+111:     ax.set_xlabel('Number of Events (n_triggers) [Log Scale]')
+112:     ax.grid(True, alpha=0.3)
+113:     ax.legend()
+114: 
+115: plt.tight_layout()
+116: plt.show()
+--- Cell 25 ---
+1: import numpy as np
+2: import pandas as pd
+3: import matplotlib.pyplot as plt
+4: import matplotlib.ticker as ticker
+5: import math
+6: 
+7: # Define the range from 1 to 500
+8: start = 1
+9: stop = 512
+10: 
+11: # Generate powers of 2: 2^0, 2^1, 2^2, ... up to 500
+12: # We use log2 to determine the maximum exponent
+13: n_triggers_list = [int(round(2**i)) for i in range(int(math.log2(stop)) + 1)]
+14: 
+15: # Define indices for calculating metrics
+16: # Baseline: 0.2s before sound onset
+17: baseline_bins = int(0.2 / dt)
+18: idx_base_start = n_bins_pre - baseline_bins
+19: idx_base_end = n_bins_pre  # Sound onset (time 0)
+20: 
+21: # Peak: Max response after sound onset
+22: idx_peak_start = n_bins_pre
+23: idx_peak_end = expected_length
+24: 
+25: # Define the different "n_triggers" (number of events/trials) you want to evaluate
+26: # n_triggers_list = [1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 200, 300, 500]
+27: 
+28: # Dictionary to store the results (Means and SEMs)
+29: results_metrics = {
+30:     'n_triggers': [],
+31:     'pb_base_mean': [], 'pb_base_sem': [],
+32:     'pb_peak_mean': [], 'pb_peak_sem': [],
+33:     'pb_evoked_mean': [], 'pb_evoked_sem': [],
+34:     'tr_base_mean': [], 'tr_base_sem': [],
+35:     'tr_peak_mean': [], 'tr_peak_sem': [],
+36:     'tr_evoked_mean': [], 'tr_evoked_sem': []
+37: }
+38: 
+39: # Helper function to extract and average segments across selected triggers for each channel
+40: def get_subset_channel_means(n_data, event_indices):
+41:     segments = []
+42:     for i in event_indices:
+43:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+44:         if 0 <= start and stop <= n_data.shape[-1]:
+45:             seg = n_data[:, start:stop]
+46:             if seg.shape[1] == expected_length:
+47:                 segments.append(seg)
+48:     if len(segments) > 0:
+49:         return np.mean(np.stack(segments, axis=0), axis=0) 
+50:     return None
+51: 
+52: # 2. Main Processing Loop
+53: for n_trig in n_triggers_list:
+54:     means_first_n_pb = []
+55:     means_last_n_tr = []
+56:     
+57:     for n_data, f_data in zip(n_data_s, f_data_s):
+58:         events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+59:         events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+60:         
+61:         # Subset: First n_trig Playback, Last n_trig Tracking
+62:         events_pb_subset = events_pb[:n_trig] if len(events_pb) >= n_trig else events_pb
+63:         events_tr_subset = events_tr[-n_trig:] if len(events_tr) >= n_trig else events_tr
+64:         
+65:         pb_mean = get_subset_channel_means(n_data, events_pb_subset)
+66:         tr_mean = get_subset_channel_means(n_data, events_tr_subset)
+67:         
+68:         if pb_mean is not None: means_first_n_pb.append(pb_mean)
+69:         if tr_mean is not None: means_last_n_tr.append(tr_mean)
+70: 
+71:     # Concatenate across all sessions. Shape: (n_total_neurons, expected_length)
+72:     final_pb = np.concatenate(means_first_n_pb, axis=0) if means_first_n_pb else np.array([])
+73:     final_tr = np.concatenate(means_last_n_tr, axis=0) if means_last_n_tr else np.array([])
+74:     
+75:     if final_pb.size == 0 or final_tr.size == 0:
+76:         continue
+77:         
+78:     n_pb_neurons = final_pb.shape[0]
+79:     n_tr_neurons = final_tr.shape[0]
+80:     
+81:     # --- Calculate Metrics for EACH neuron individually for Playback ---
+82:     pb_base_per_neuron = np.mean(final_pb[:, idx_base_start:idx_base_end], axis=1)
+83:     pb_pk_per_neuron = np.max(final_pb[:, idx_peak_start:idx_peak_end], axis=1)
+84:     pb_evk_per_neuron = pb_pk_per_neuron - pb_base_per_neuron
+85:     
+86:     # --- Calculate Metrics for EACH neuron individually for Tracking ---
+87:     tr_base_per_neuron = np.mean(final_tr[:, idx_base_start:idx_base_end], axis=1)
+88:     tr_pk_per_neuron = np.max(final_tr[:, idx_peak_start:idx_peak_end], axis=1)
+89:     tr_evk_per_neuron = tr_pk_per_neuron - tr_base_per_neuron
+90:     
+91:     # Calculate Means and SEMs and store them
+92:     results_metrics['n_triggers'].append(n_trig)
+93:     
+94:     results_metrics['pb_base_mean'].append(np.mean(pb_base_per_neuron))
+95:     results_metrics['pb_base_sem'].append(np.std(pb_base_per_neuron) / np.sqrt(n_pb_neurons))
+96:     results_metrics['pb_peak_mean'].append(np.mean(pb_pk_per_neuron))
+97:     results_metrics['pb_peak_sem'].append(np.std(pb_pk_per_neuron) / np.sqrt(n_pb_neurons))
+98:     results_metrics['pb_evoked_mean'].append(np.mean(pb_evk_per_neuron))
+99:     results_metrics['pb_evoked_sem'].append(np.std(pb_evk_per_neuron) / np.sqrt(n_pb_neurons))
+100:     
+101:     results_metrics['tr_base_mean'].append(np.mean(tr_base_per_neuron))
+102:     results_metrics['tr_base_sem'].append(np.std(tr_base_per_neuron) / np.sqrt(n_tr_neurons))
+103:     results_metrics['tr_peak_mean'].append(np.mean(tr_pk_per_neuron))
+104:     results_metrics['tr_peak_sem'].append(np.std(tr_pk_per_neuron) / np.sqrt(n_tr_neurons))
+105:     results_metrics['tr_evoked_mean'].append(np.mean(tr_evk_per_neuron))
+106:     results_metrics['tr_evoked_sem'].append(np.std(tr_evk_per_neuron) / np.sqrt(n_tr_neurons))
+107: 
+108: 
+109: 
+--- Cell 26 ---
+1: import pandas as pd
+2: import numpy as np
+3: import matplotlib.pyplot as plt
+4: 
+5: # Assuming 'results_metrics' is defined earlier in your script
+6: df_metrics = pd.DataFrame(results_metrics)
+7: 
+8: fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+9: x_vals = df_metrics['n_triggers'].values
+10: n_points = len(x_vals)
+11: center_x = n_points - 0.5  # The exact middle point of the plot
+12: 
+13: # Create sequential x-coordinates
+14: x_tr = np.arange(n_points)
+15: x_pb = np.arange(n_points) + n_points
+16: 
+17: # Reverse Tracking data so it plots chronologically toward the center (512 down to 1)
+18: tr_base_mean_rev = df_metrics['tr_base_mean'].values[::-1]
+19: tr_base_sem_rev  = df_metrics['tr_base_sem'].values[::-1]
+20: tr_peak_mean_rev = df_metrics['tr_peak_mean'].values[::-1]
+21: tr_peak_sem_rev  = df_metrics['tr_peak_sem'].values[::-1]
+22: tr_evk_mean_rev  = df_metrics['tr_evoked_mean'].values[::-1]
+23: tr_evk_sem_rev   = df_metrics['tr_evoked_sem'].values[::-1]
+24: 
+25: # Playback data (normal order)
+26: pb_base_mean = df_metrics['pb_base_mean'].values
+27: pb_base_sem  = df_metrics['pb_base_sem'].values
+28: pb_peak_mean = df_metrics['pb_peak_mean'].values
+29: pb_peak_sem  = df_metrics['pb_peak_sem'].values
+30: pb_evk_mean  = df_metrics['pb_evoked_mean'].values
+31: pb_evk_sem   = df_metrics['pb_evoked_sem'].values
+32: 
+33: # Create X-tick labels: Reversed for Tracking, Normal for Playback
+34: labels_tr = list(x_vals)[::-1]
+35: labels_pb = list(x_vals)
+36: all_labels = labels_tr + labels_pb
+37: 
+38: # Formatting helper for the axis
+39: def setup_sequential_axis(ax):
+40:     ax.set_xticks(list(x_tr) + list(x_pb))
+41:     ax.set_xticklabels(all_labels, rotation=45)
+42:     ax.set_xlabel('Number of Triggers')
+43:     # The center dividing line
+44:     ax.axvline(x=center_x, color='gray', linestyle='--', alpha=0.8, zorder=3)
+45:     ax.grid(True, alpha=0.3)
+46:     ax.legend()
+47: 
+48: # Helper function to plot means, fill SEMs, and draw horizontal dashed lines
+49: def plot_metric_with_fills(ax, tr_m, tr_s, pb_m, pb_s, title, ylabel=None):
+50:     # --- Tracking (Red) ---
+51:     ax.plot(x_tr, tr_m, marker='o', color='red', label='Tracking Mean')
+52:     # ADD LABEL HERE
+53:     ax.fill_between(x_tr, tr_m - tr_s, tr_m + tr_s, color='red', alpha=0.2, label='Tracking SEM')
+54:     ax.hlines(y=tr_m, xmin=x_tr, xmax=center_x, color='red', linestyle='--', alpha=0.4, zorder=1)
+55:     
+56:     # --- Playback (Black) ---
+57:     ax.plot(x_pb, pb_m, marker='o', color='black', label='Playback Mean')
+58:     # ADD LABEL HERE
+59:     ax.fill_between(x_pb, pb_m - pb_s, pb_m + pb_s, color='black', alpha=0.2, label='Playback SEM')
+60:     ax.hlines(y=pb_m, xmin=center_x, xmax=x_pb, color='black', linestyle='--', alpha=0.4, zorder=1)
+61:     
+62:     ax.set_title(title)
+63:     if ylabel:
+64:         ax.set_ylabel(ylabel)
+65:     setup_sequential_axis(ax)
+66: 
+67: # 3A. Baseline Plot
+68: plot_metric_with_fills(axes[0], tr_base_mean_rev, tr_base_sem_rev, 
+69:                        pb_base_mean, pb_base_sem, 
+70:                        title='Baseline (-0.2s to 0s)', ylabel='Mean Firing Rate')
+71: 
+72: # 3B. Peak Plot
+73: plot_metric_with_fills(axes[1], tr_peak_mean_rev, tr_peak_sem_rev, 
+74:                        pb_peak_mean, pb_peak_sem, 
+75:                        title='Peak Response')
+76: 
+77: # 3C. Total Evoked Response Plot
+78: plot_metric_with_fills(axes[2], tr_evk_mean_rev, tr_evk_sem_rev, 
+79:                        pb_evk_mean, pb_evk_sem, 
+80:                        title='Total Evoked Response (Peak - Baseline)')
+81: 
+82: plt.suptitle(f'Last n Triggers of Tracking vs First n Triggers of Playback', fontsize=16, y=0.99)
+83: plt.tight_layout()
+84: plt.show()
+--- Cell 27 ---
+1: 
+2: # Define the range from 1 to 500
+3: start = 1
+4: stop = 512
+5: 
+6: # Generate powers of 2: 2^0, 2^1, 2^2, ... up to 500
+7: n_triggers_list = [int(round(2**i)) for i in range(int(math.log2(stop)) + 1)]
+8: 
+9: # Define indices for calculating metrics
+10: baseline_bins = int(0.2 / dt)
+11: idx_base_start = n_bins_pre - baseline_bins
+12: idx_base_end = n_bins_pre  # Sound onset (time 0)
+13: 
+14: idx_peak_start = n_bins_pre
+15: idx_peak_end = expected_length
+16: 
+17: # Dictionary to store the results (Means and SEMs)
+18: results_metrics = {
+19:     'n_triggers': [],
+20:     'pb_base_mean': [], 'pb_base_sem': [],
+21:     'pb_peak_mean': [], 'pb_peak_sem': [],
+22:     'pb_evoked_mean': [], 'pb_evoked_sem': [],
+23:     'tr_base_mean': [], 'tr_base_sem': [],
+24:     'tr_peak_mean': [], 'tr_peak_sem': [],
+25:     'tr_evoked_mean': [], 'tr_evoked_sem': []
+26: }
+27: 
+28: # Helper function
+29: def get_subset_channel_means(n_data, event_indices):
+30:     segments = []
+31:     for i in event_indices:
+32:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+33:         if 0 <= start and stop <= n_data.shape[-1]:
+34:             seg = n_data[:, start:stop]
+35:             if seg.shape[1] == expected_length:
+36:                 segments.append(seg)
+37:     if len(segments) > 0:
+38:         return np.mean(np.stack(segments, axis=0), axis=0) 
+39:     return None
+40: 
+41: # 2. Main Processing Loop
+42: for n_trig in n_triggers_list:
+43:     means_first_n_pb = []
+44:     means_last_n_tr = []
+45:     
+46:     for n_data, f_data in zip(n_data_s, f_data_s):
+47:         events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+48:         events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+49:         
+50:         events_pb_subset = events_pb[:n_trig] if len(events_pb) >= n_trig else events_pb
+51:         events_tr_subset = events_tr[-n_trig:] if len(events_tr) >= n_trig else events_tr
+52:         
+53:         pb_mean = get_subset_channel_means(n_data, events_pb_subset)
+54:         tr_mean = get_subset_channel_means(n_data, events_tr_subset)
+55:         
+56:         if pb_mean is not None: means_first_n_pb.append(pb_mean)
+57:         if tr_mean is not None: means_last_n_tr.append(tr_mean)
+58: 
+59:     final_pb = np.concatenate(means_first_n_pb, axis=0) if means_first_n_pb else np.array([])
+60:     final_tr = np.concatenate(means_last_n_tr, axis=0) if means_last_n_tr else np.array([])
+61:     
+62:     if final_pb.size == 0 or final_tr.size == 0:
+63:         continue
+64:         
+65:     n_pb_neurons = final_pb.shape[0]
+66:     n_tr_neurons = final_tr.shape[0]
+67:     
+68:     # =========================================================
+69:     # APPLY Z-SCORE (按每个神经元独立计算 Z-score)
+70:     # =========================================================
+71:     # 为了避免除以 0，给标准差加上一个极小值 (1e-8)
+72:     
+73:     # Playback Z-score (基于整个时段计算均值和标准差)
+74:     pb_mean_time = np.mean(final_pb, axis=1, keepdims=True)
+75:     pb_std_time = np.std(final_pb, axis=1, keepdims=True) + 1e-8
+76:     final_pb_z = (final_pb - pb_mean_time) / pb_std_time
+77:     
+78:     # Tracking Z-score
+79:     tr_mean_time = np.mean(final_tr, axis=1, keepdims=True)
+80:     tr_std_time = np.std(final_tr, axis=1, keepdims=True) + 1e-8
+81:     final_tr_z = (final_tr - tr_mean_time) / tr_std_time
+82: 
+83:     # --- 基于 Z-scored 数据计算 Playback 的 Metrics ---
+84:     pb_base_per_neuron = np.mean(final_pb_z[:, idx_base_start:idx_base_end], axis=1)
+85:     pb_pk_per_neuron = np.max(final_pb_z[:, idx_peak_start:idx_peak_end], axis=1)
+86:     pb_evk_per_neuron = pb_pk_per_neuron - pb_base_per_neuron
+87:     
+88:     # --- 基于 Z-scored 数据计算 Tracking 的 Metrics ---
+89:     tr_base_per_neuron = np.mean(final_tr_z[:, idx_base_start:idx_base_end], axis=1)
+90:     tr_pk_per_neuron = np.max(final_tr_z[:, idx_peak_start:idx_peak_end], axis=1)
+91:     tr_evk_per_neuron = tr_pk_per_neuron - tr_base_per_neuron
+92:     
+93:     # Calculate Means and SEMs and store them
+94:     results_metrics['n_triggers'].append(n_trig)
+95:     
+96:     results_metrics['pb_base_mean'].append(np.mean(pb_base_per_neuron))
+97:     results_metrics['pb_base_sem'].append(np.std(pb_base_per_neuron) / np.sqrt(n_pb_neurons))
+98:     results_metrics['pb_peak_mean'].append(np.mean(pb_pk_per_neuron))
+99:     results_metrics['pb_peak_sem'].append(np.std(pb_pk_per_neuron) / np.sqrt(n_pb_neurons))
+100:     results_metrics['pb_evoked_mean'].append(np.mean(pb_evk_per_neuron))
+101:     results_metrics['pb_evoked_sem'].append(np.std(pb_evk_per_neuron) / np.sqrt(n_pb_neurons))
+102:     
+103:     results_metrics['tr_base_mean'].append(np.mean(tr_base_per_neuron))
+104:     results_metrics['tr_base_sem'].append(np.std(tr_base_per_neuron) / np.sqrt(n_tr_neurons))
+105:     results_metrics['tr_peak_mean'].append(np.mean(tr_pk_per_neuron))
+106:     results_metrics['tr_peak_sem'].append(np.std(tr_pk_per_neuron) / np.sqrt(n_tr_neurons))
+107:     results_metrics['tr_evoked_mean'].append(np.mean(tr_evk_per_neuron))
+108:     results_metrics['tr_evoked_sem'].append(np.std(tr_evk_per_neuron) / np.sqrt(n_tr_neurons))
+109: 
+--- Cell 28 ---
+1: 
+2: # =========================================================
+3: # PLOTTING
+4: # =========================================================
+5: df_metrics = pd.DataFrame(results_metrics)
+6: 
+7: fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+8: x_vals = df_metrics['n_triggers'].values
+9: n_points = len(x_vals)
+10: center_x = n_points - 0.5
+11: 
+12: x_tr = np.arange(n_points)
+13: x_pb = np.arange(n_points) + n_points
+14: 
+15: # Reverse Tracking data
+16: tr_base_mean_rev = df_metrics['tr_base_mean'].values[::-1]
+17: tr_base_sem_rev  = df_metrics['tr_base_sem'].values[::-1]
+18: tr_peak_mean_rev = df_metrics['tr_peak_mean'].values[::-1]
+19: tr_peak_sem_rev  = df_metrics['tr_peak_sem'].values[::-1]
+20: tr_evk_mean_rev  = df_metrics['tr_evoked_mean'].values[::-1]
+21: tr_evk_sem_rev   = df_metrics['tr_evoked_sem'].values[::-1]
+22: 
+23: # Playback data
+24: pb_base_mean = df_metrics['pb_base_mean'].values
+25: pb_base_sem  = df_metrics['pb_base_sem'].values
+26: pb_peak_mean = df_metrics['pb_peak_mean'].values
+27: pb_peak_sem  = df_metrics['pb_peak_sem'].values
+28: pb_evk_mean  = df_metrics['pb_evoked_mean'].values
+29: pb_evk_sem   = df_metrics['pb_evoked_sem'].values
+30: 
+31: labels_tr = list(x_vals)[::-1]
+32: labels_pb = list(x_vals)
+33: all_labels = labels_tr + labels_pb
+34: 
+35: def setup_sequential_axis(ax):
+36:     ax.set_xticks(list(x_tr) + list(x_pb))
+37:     ax.set_xticklabels(all_labels, rotation=45)
+38:     ax.set_xlabel('Number of Triggers')
+39:     ax.axvline(x=center_x, color='gray', linestyle='--', alpha=0.8, zorder=3)
+40:     ax.grid(True, alpha=0.3)
+41:     ax.legend()
+42: 
+43: def plot_metric_with_fills(ax, tr_m, tr_s, pb_m, pb_s, title, ylabel=None):
+44:     # Tracking (Red)
+45:     ax.plot(x_tr, tr_m, marker='o', color='red', label='Tracking Mean')
+46:     ax.fill_between(x_tr, tr_m - tr_s, tr_m + tr_s, color='red', alpha=0.2, label='Tracking SEM')
+47:     ax.hlines(y=tr_m, xmin=x_tr, xmax=center_x, color='red', linestyle='--', alpha=0.4, zorder=1)
+48:     
+49:     # Playback (Black)
+50:     ax.plot(x_pb, pb_m, marker='o', color='black', label='Playback Mean')
+51:     ax.fill_between(x_pb, pb_m - pb_s, pb_m + pb_s, color='black', alpha=0.2, label='Playback SEM')
+52:     ax.hlines(y=pb_m, xmin=center_x, xmax=x_pb, color='black', linestyle='--', alpha=0.4, zorder=1)
+53:     
+54:     ax.set_title(title)
+55:     if ylabel:
+56:         ax.set_ylabel(ylabel)
+57:     setup_sequential_axis(ax)
+58: 
+59: # 3A. Baseline Plot
+60: plot_metric_with_fills(axes[0], tr_base_mean_rev, tr_base_sem_rev, 
+61:                        pb_base_mean, pb_base_sem, 
+62:                        title='Baseline Z-Score (-0.2s to 0s)', ylabel='Z-Score')
+63: 
+64: # 3B. Peak Plot
+65: plot_metric_with_fills(axes[1], tr_peak_mean_rev, tr_peak_sem_rev, 
+66:                        pb_peak_mean, pb_peak_sem, 
+67:                        title='Peak Response Z-Score', ylabel='Z-Score')
+68: 
+69: # 3C. Total Evoked Response Plot
+70: plot_metric_with_fills(axes[2], tr_evk_mean_rev, tr_evk_sem_rev, 
+71:                        pb_evk_mean, pb_evk_sem, 
+72:                        title='Total Evoked Response (Peak - Baseline Z-Score)', ylabel='Z-Score')
+73: 
+74: plt.suptitle(f'Last n Triggers of Tracking vs First n Triggers of Playback (Z-Scored)', fontsize=16, y=0.99)
+75: plt.tight_layout()
+76: plt.show()
+--- Cell 29 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: # ==========================================
+5: # --- CUSTOMIZABLE VARIABLES ---
+6: n_per_group = 1    # Number of triggers per group
+7: n_groups = 3        # Number of chronological groups per condition
+8: # ==========================================
+9: 
+10: # Generate keys dynamically based on variables
+11: tr_keys = []
+12: for i in range(n_groups, 0, -1):
+13:     start_idx = i * n_per_group
+14:     end_idx = (i - 1) * n_per_group + 1
+15:     tr_keys.append(f'Tracking: Last {start_idx}-{end_idx}')
+16: 
+17: pb_keys = []
+18: for i in range(n_groups):
+19:     start_idx = i * n_per_group + 1
+20:     end_idx = (i + 1) * n_per_group
+21:     pb_keys.append(f'Playback: First {start_idx}-{end_idx}')
+22: 
+23: all_keys = tr_keys + pb_keys
+24: all_data = {key: [] for key in all_keys}
+25: 
+26: # Helper function to extract and average segments
+27: def get_subset_channel_means(n_data, event_indices):
+28:     segments = []
+29:     for i in event_indices:
+30:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+31:         if 0 <= start and stop <= n_data.shape[-1]:
+32:             seg = n_data[:, start:stop]
+33:             if seg.shape[1] == expected_length:
+34:                 segments.append(seg)
+35:     if len(segments) > 0:
+36:         return np.mean(np.stack(segments, axis=0), axis=0)
+37:     return None
+38: 
+39: # 2. Main Processing Loop
+40: for n_data, f_data in zip(n_data_s, f_data_s):
+41:     events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+42:     events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+43:     
+44:     # --- Tracking: Slice chronological chunks from the end ---
+45:     total_tr_needed = n_groups * n_per_group
+46:     tr_chunks = []
+47:     
+48:     # Only process if the session has enough tracking events
+49:     if len(events_tr) >= total_tr_needed:
+50:         for i in range(n_groups, 0, -1):
+51:             start = -i * n_per_group
+52:             end = -(i - 1) * n_per_group if i > 1 else None
+53:             tr_chunks.append(events_tr[start:end])
+54:     else:
+55:         tr_chunks = [[] for _ in range(n_groups)] 
+56:         
+57:     for key, evs in zip(tr_keys, tr_chunks):
+58:         if len(evs) > 0:
+59:             mean_trace = get_subset_channel_means(n_data, evs)
+60:             if mean_trace is not None:
+61:                 all_data[key].append(mean_trace)
+62: 
+63:     # --- Playback: Slice chronological chunks from the beginning ---
+64:     total_pb_needed = n_groups * n_per_group
+65:     pb_chunks = []
+66:     
+67:     # Only process if the session has enough playback events
+68:     if len(events_pb) >= total_pb_needed:
+69:         for i in range(n_groups):
+70:             start = i * n_per_group
+71:             end = (i + 1) * n_per_group
+72:             pb_chunks.append(events_pb[start:end])
+73:     else:
+74:         pb_chunks = [[] for _ in range(n_groups)]
+75:         
+76:     for key, evs in zip(pb_keys, pb_chunks):
+77:         if len(evs) > 0:
+78:             mean_trace = get_subset_channel_means(n_data, evs)
+79:             if mean_trace is not None:
+80:                 all_data[key].append(mean_trace)
+81: 
+82: # 3. Plotting in a Dynamic Grid
+83: # Create a 2 x n_groups grid (Top row: Tracking, Bottom row: Playback)
+84: fig, axes = plt.subplots(1, n_groups * 2 , figsize=(20 * n_groups, 8), sharey=True, sharex=True)
+85: 
+86: # Ensure axes is a 2D array even if n_groups=1
+87: axes = np.array(axes).reshape(2, n_groups)
+88: 
+89: # Generate dynamic colors (from light to dark)
+90: tr_colors = [plt.cm.Reds(x) for x in np.linspace(0.4, 0.9, n_groups)]
+91: pb_colors = [plt.cm.Greys(x) for x in np.linspace(0.4, 0.9, n_groups)]
+92: 
+93: # --- Plot Tracking (Top Row) ---
+94: for i, (key, color) in enumerate(zip(tr_keys, tr_colors)):
+95:     ax = axes[0, i]
+96:     if len(all_data[key]) > 0:
+97:         final_dat = np.concatenate(all_data[key], axis=0)
+98:         mean_dat = np.mean(final_dat, axis=0)
+99:         sem_dat = np.std(final_dat, axis=0) / np.sqrt(final_dat.shape[0])
+100:         
+101:         ax.plot(time, mean_dat, color=color, linewidth=2.5, label=f'Neurons: n={final_dat.shape[0]}')
+102:         ax.fill_between(time, mean_dat - sem_dat, mean_dat + sem_dat, color=color, alpha=0.15)
+103:         ax.legend(loc='upper right')
+104:         
+105:     ax.axvline(0, color='blue', linestyle='--', alpha=0.5, label='Sound Onset' if i==0 else "")
+106:     ax.set_title(key, fontsize=12, fontweight='bold')
+107:     ax.grid(True, alpha=0.3)
+108:     if i == 0: ax.set_ylabel('Mean Firing Rate\n[Tracking]', fontsize=12)
+109: 
+110: # --- Plot Playback (Bottom Row) ---
+111: for i, (key, color) in enumerate(zip(pb_keys, pb_colors)):
+112:     ax = axes[1, i]
+113:     if len(all_data[key]) > 0:
+114:         final_dat = np.concatenate(all_data[key], axis=0)
+115:         mean_dat = np.mean(final_dat, axis=0)
+116:         sem_dat = np.std(final_dat, axis=0) / np.sqrt(final_dat.shape[0])
+117:         
+118:         ax.plot(time, mean_dat, color=color, linewidth=2.5, label=f'Neurons: n={final_dat.shape[0]}')
+119:         ax.fill_between(time, mean_dat - sem_dat, mean_dat + sem_dat, color=color, alpha=0.15)
+120:         ax.legend(loc='upper right')
+121:         
+122:     ax.axvline(0, color='blue', linestyle='--', alpha=0.5)
+123:     ax.set_title(key, fontsize=12, fontweight='bold')
+124:     ax.grid(True, alpha=0.3)
+125:     ax.set_xlabel('Time relative to event (s)', fontsize=12)
+126:     if i == 0: ax.set_ylabel('Mean Firing Rate\n[Playback]', fontsize=12)
+127: 
+128: plt.suptitle(f'Chronological PSTH sEvolution ({n_per_group} triggers per group)', fontsize=16, y=1.02)
+129: plt.tight_layout()  
+130: plt.show()
+--- Cell 30 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: # ==========================================
+5: # --- CUSTOMIZABLE VARIABLES ---
+6: n_per_group = 5    # Number of triggers per group
+7: n_groups = 3        # Number of chronological groups per condition
+8: # ==========================================
+9: 
+10: # Generate keys dynamically based on variables
+11: tr_keys = []
+12: for i in range(n_groups, 0, -1):
+13:     start_idx = i * n_per_group
+14:     end_idx = (i - 1) * n_per_group + 1
+15:     tr_keys.append(f'Tracking: Last {start_idx}-{end_idx}')
+16: 
+17: pb_keys = []
+18: for i in range(n_groups):
+19:     start_idx = i * n_per_group + 1
+20:     end_idx = (i + 1) * n_per_group
+21:     pb_keys.append(f'Playback: First {start_idx}-{end_idx}')
+22: 
+23: all_keys = tr_keys + pb_keys
+24: all_data = {key: [] for key in all_keys}
+25: 
+26: # Helper function to extract and average segments
+27: def get_subset_channel_means(n_data, event_indices):
+28:     segments = []
+29:     for i in event_indices:
+30:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+31:         if 0 <= start and stop <= n_data.shape[-1]:
+32:             seg = n_data[:, start:stop]
+33:             if seg.shape[1] == expected_length:
+34:                 segments.append(seg)
+35:     if len(segments) > 0:
+36:         return np.mean(np.stack(segments, axis=0), axis=0)
+37:     return None
+38: 
+39: # 2. Main Processing Loop
+40: for n_data, f_data in zip(n_data_s, f_data_s):
+41:     events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+42:     events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+43:     
+44:     # --- Tracking: Slice chronological chunks from the end ---
+45:     total_tr_needed = n_groups * n_per_group
+46:     tr_chunks = []
+47:     
+48:     # Only process if the session has enough tracking events
+49:     if len(events_tr) >= total_tr_needed:
+50:         for i in range(n_groups, 0, -1):
+51:             start = -i * n_per_group
+52:             end = -(i - 1) * n_per_group if i > 1 else None
+53:             tr_chunks.append(events_tr[start:end])
+54:     else:
+55:         tr_chunks = [[] for _ in range(n_groups)] 
+56:         
+57:     for key, evs in zip(tr_keys, tr_chunks):
+58:         if len(evs) > 0:
+59:             mean_trace = get_subset_channel_means(n_data, evs)
+60:             if mean_trace is not None:
+61:                 all_data[key].append(mean_trace)
+62: 
+63:     # --- Playback: Slice chronological chunks from the beginning ---
+64:     total_pb_needed = n_groups * n_per_group
+65:     pb_chunks = []
+66:     
+67:     # Only process if the session has enough playback events
+68:     if len(events_pb) >= total_pb_needed:
+69:         for i in range(n_groups):
+70:             start = i * n_per_group
+71:             end = (i + 1) * n_per_group
+72:             pb_chunks.append(events_pb[start:end])
+73:     else:
+74:         pb_chunks = [[] for _ in range(n_groups)]
+75:         
+76:     for key, evs in zip(pb_keys, pb_chunks):
+77:         if len(evs) > 0:
+78:             mean_trace = get_subset_channel_means(n_data, evs)
+79:             if mean_trace is not None:
+80:                 all_data[key].append(mean_trace)
+81: 
+82: # 3. Plotting in a Dynamic Grid
+83: # Create a 2 x n_groups grid (Top row: Tracking, Bottom row: Playback)
+84: fig, axes = plt.subplots(1, n_groups * 2 , figsize=(20 * n_groups, 8), sharey=True, sharex=True)
+85: 
+86: # Ensure axes is a 2D array even if n_groups=1
+87: axes = np.array(axes).reshape(2, n_groups)
+88: 
+89: # Generate dynamic colors (from light to dark)
+90: tr_colors = [plt.cm.Reds(x) for x in np.linspace(0.4, 0.9, n_groups)]
+91: pb_colors = [plt.cm.Greys(x) for x in np.linspace(0.4, 0.9, n_groups)]
+92: 
+93: # --- Plot Tracking (Top Row) ---
+94: for i, (key, color) in enumerate(zip(tr_keys, tr_colors)):
+95:     ax = axes[0, i]
+96:     n_neurons = 0 # Default to 0 if no data
+97:     if len(all_data[key]) > 0:
+98:         final_dat = np.concatenate(all_data[key], axis=0)
+99:         mean_dat = np.mean(final_dat, axis=0)
+100:         sem_dat = np.std(final_dat, axis=0) / np.sqrt(final_dat.shape[0])
+101:         n_neurons = final_dat.shape[0] # <--- Extract number of neurons here
+102:         
+103:         ax.plot(time, mean_dat, color=color, linewidth=2.5, label='Mean FR')
+104:         ax.fill_between(time, mean_dat - sem_dat, mean_dat + sem_dat, color=color, alpha=0.15)
+105:         
+106:         # Add a text box directly inside the plot
+107:         ax.text(0.05, 0.95, f'n = {n_neurons} neurons', transform=ax.transAxes, 
+108:                 fontsize=12, verticalalignment='top', 
+109:                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor=color))
+110:         
+111:     ax.axvline(0, color='blue', linestyle='--', alpha=0.5, label='Sound Onset' if i==0 else "")
+112:     
+113:     # Update the title to include the neuron count
+114:     ax.set_title(f"{key}\n(n={n_neurons})", fontsize=14, fontweight='bold')
+115:     ax.grid(True, alpha=0.3)
+116:     if i == 0: ax.set_ylabel('Mean Firing Rate\n[Tracking]', fontsize=12)
+117:     ax.legend(loc='lower right') # Moved legend so it doesn't overlap the text box
+118: 
+119: # --- Plot Playback (Bottom Row) ---
+120: for i, (key, color) in enumerate(zip(pb_keys, pb_colors)):
+121:     ax = axes[1, i]
+122:     n_neurons = 0
+123:     if len(all_data[key]) > 0:
+124:         final_dat = np.concatenate(all_data[key], axis=0)
+125:         mean_dat = np.mean(final_dat, axis=0)
+126:         sem_dat = np.std(final_dat, axis=0) / np.sqrt(final_dat.shape[0])
+127:         n_neurons = final_dat.shape[0] # <--- Extract number of neurons here
+128:         
+129:         ax.plot(time, mean_dat, color=color, linewidth=2.5, label='Mean FR')
+130:         ax.fill_between(time, mean_dat - sem_dat, mean_dat + sem_dat, color=color, alpha=0.15)
+131:         
+132:         # Add a text box directly inside the plot
+133:         ax.text(0.05, 0.95, f'n = {n_neurons} neurons', transform=ax.transAxes, 
+134:                 fontsize=12, verticalalignment='top', 
+135:                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor=color))
+136:         
+137:     ax.axvline(0, color='blue', linestyle='--', alpha=0.5)
+138:     
+139:     # Update the title to include the neuron count
+140:     ax.set_title(f"{key}\n(n={n_neurons})", fontsize=14, fontweight='bold')
+141:     ax.grid(True, alpha=0.3)
+142:     ax.set_xlabel('Time relative to event (s)', fontsize=12)
+143:     if i == 0: ax.set_ylabel('Mean Firing Rate\n[Playback]', fontsize=12)
+144:     ax.legend(loc='lower right')
+145: 
+146: plt.suptitle(f'Chronological PSTH Evolution ({n_per_group} triggers per group)', fontsize=18, y=1.05)
+147: plt.tight_layout()  
+148: plt.show()
+--- Cell 31 ---
+1: # Set your thresholds (matching your last cell)
+2: n_per_group = 5    
+3: n_groups = 3        
+4: total_needed = n_groups * n_per_group  # 15 events needed
+5: 
+6: print(f"--- Diagnostic: Checking for Session Mismatches (Threshold: {total_needed} events) ---\n")
+7: 
+8: # Keep track of totals
+9: total_pb_neurons = 0
+10: total_tr_neurons = 0
+11: mismatched_sessions = []
+12: 
+13: for i, (n_data, f_data) in enumerate(zip(n_data_s, f_data_s)):
+14:     # 1. Count the events
+15:     events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+16:     events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+17:     
+18:     # 2. Check against your threshold
+19:     has_enough_pb = len(events_pb) >= total_needed
+20:     has_enough_tr = len(events_tr) >= total_needed
+21:     
+22:     # Get session name safely (using your all_sessions_path variable from Cell 3)
+23:     try:
+24:         session_name = os.path.basename(all_sessions_path[i])
+25:     except NameError:
+26:         session_name = f"Session Index {i}"
+27:         
+28:     num_neurons = n_data.shape[0]
+29:     
+30:     # 3. Flag the mismatches
+31:     if has_enough_pb and not has_enough_tr:
+32:         print(f"⚠️ MISMATCH | {session_name}:")
+33:         print(f"   -> Kept for Playback ({len(events_pb)} events)")
+34:         print(f"   -> EXCLUDED for Tracking ({len(events_tr)} events)")
+35:         print(f"   -> Result: +{num_neurons} neurons added to Playback ONLY.\n")
+36:         mismatched_sessions.append(session_name)
+37:         total_pb_neurons += num_neurons
+38:         
+39:     elif has_enough_tr and not has_enough_pb:
+40:         print(f"⚠️ MISMATCH | {session_name}:")
+41:         print(f"   -> Kept for Tracking ({len(events_tr)} events)")
+42:         print(f"   -> EXCLUDED for Playback ({len(events_pb)} events)")
+43:         print(f"   -> Result: +{num_neurons} neurons added to Tracking ONLY.\n")
+44:         mismatched_sessions.append(session_name)
+45:         total_tr_neurons += num_neurons
+46:         
+47:     # 4. Tally matches (for your own sanity check)
+48:     elif has_enough_pb and has_enough_tr:
+49:         total_pb_neurons += num_neurons
+50:         total_tr_neurons += num_neurons
+51: 
+52: print("--- Summary ---")
+53: print(f"Total mismatched sessions: {len(mismatched_sessions)}")
+54: print(f"Final Expected Playback Neurons: {total_pb_neurons}")
+55: print(f"Final Expected Tracking Neurons: {total_tr_neurons}")
+--- Cell 33 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: # ==========================================
+5: # --- CUSTOMIZABLE VARIABLES ---
+6: n_per_group = 100    # Number of triggers per group
+7: n_groups = 3        # Number of chronological groups per condition
+8: # ==========================================
+9: 
+10: total_needed = n_groups * n_per_group
+11: 
+12: # Define indices for calculating metrics
+13: baseline_bins = int(0.2 / dt)
+14: idx_base_start = n_bins_pre - baseline_bins
+15: idx_base_end = n_bins_pre  # Sound onset (time 0)
+16: idx_peak_start = n_bins_pre
+17: idx_peak_end = expected_length
+18: 
+19: # Generate x-axis labels for the chunks
+20: # Tracking: Last chunks (15-11, 10-6, 5-1) chronological
+21: # Playback: First chunks (1-5, 6-10, 11-15) chronological
+22: x_labels_tr = [f"TR: Last {i*n_per_group}-{(i-1)*n_per_group+1}" for i in range(n_groups, 0, -1)]
+23: x_labels_pb = [f"PB: First {i*n_per_group+1}-{(i+1)*n_per_group}" for i in range(n_groups)]
+24: all_x_labels = x_labels_tr + x_labels_pb
+25: 
+26: # Containers for the chunks
+27: tr_data_chunks = [[] for _ in range(n_groups)]
+28: pb_data_chunks = [[] for _ in range(n_groups)]
+29: 
+30: # Helper function
+31: def get_subset_channel_means(n_data, event_indices):
+32:     segments = []
+33:     for i in event_indices:
+34:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+35:         if 0 <= start and stop <= n_data.shape[-1]:
+36:             seg = n_data[:, start:stop]
+37:             if seg.shape[1] == expected_length:
+38:                 segments.append(seg)
+39:     if len(segments) > 0:
+40:         return np.mean(np.stack(segments, axis=0), axis=0)
+41:     return None
+42: 
+43: # 1. Main Processing Loop
+44: for n_data, f_data in zip(n_data_s, f_data_s):
+45:     events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+46:     events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+47:     
+48:     # STRICT INCLUSION: Only process if the session has enough events for BOTH conditions
+49:     if len(events_tr) >= total_needed and len(events_pb) >= total_needed:
+50:         
+51:         # --- Tracking Chunks (Chronological from the end) ---
+52:         for chunk_idx, i in enumerate(range(n_groups, 0, -1)):
+53:             start = -i * n_per_group
+54:             end = -(i - 1) * n_per_group if i > 1 else None
+55:             evs = events_tr[start:end]
+56:             mean_trace = get_subset_channel_means(n_data, evs)
+57:             if mean_trace is not None:
+58:                 tr_data_chunks[chunk_idx].append(mean_trace)
+59: 
+60:         # --- Playback Chunks (Chronological from the start) ---
+61:         for chunk_idx, i in enumerate(range(n_groups)):
+62:             start = i * n_per_group
+63:             end = (i + 1) * n_per_group
+64:             evs = events_pb[start:end]
+65:             mean_trace = get_subset_channel_means(n_data, evs)
+66:             if mean_trace is not None:
+67:                 pb_data_chunks[chunk_idx].append(mean_trace)
+68: 
+69: # 2. Compute Z-Scores and Metrics
+70: def process_metrics(data_chunks):
+71:     means = {'base': [], 'peak': [], 'evoked': []}
+72:     sems = {'base': [], 'peak': [], 'evoked': []}
+73:     n_neurons = 0
+74:     
+75:     for chunk in data_chunks:
+76:         if len(chunk) > 0:
+77:             final_dat = np.concatenate(chunk, axis=0)
+78:             n_neurons = final_dat.shape[0]
+79:             
+80:             # Z-Score per neuron
+81:             mean_time = np.mean(final_dat, axis=1, keepdims=True)
+82:             std_time = np.std(final_dat, axis=1, keepdims=True) + 1e-8
+83:             z_dat = (final_dat - mean_time) / std_time
+84:             
+85:             # Extract Metrics
+86:             base = np.mean(z_dat[:, idx_base_start:idx_base_end], axis=1)
+87:             peak = np.max(z_dat[:, idx_peak_start:idx_peak_end], axis=1)
+88:             evoked = peak - base
+89:             
+90:             # Store Means and SEMs
+91:             means['base'].append(np.mean(base))
+92:             sems['base'].append(np.std(base) / np.sqrt(n_neurons))
+93:             
+94:             means['peak'].append(np.mean(peak))
+95:             sems['peak'].append(np.std(peak) / np.sqrt(n_neurons))
+96:             
+97:             means['evoked'].append(np.mean(evoked))
+98:             sems['evoked'].append(np.std(evoked) / np.sqrt(n_neurons))
+99:         else:
+100:             for k in means:
+101:                 means[k].append(np.nan)
+102:                 sems[k].append(np.nan)
+103:                 
+104:     return means, sems, n_neurons
+105: 
+106: tr_means, tr_sems, n_tr_neurons = process_metrics(tr_data_chunks)
+107: pb_means, pb_sems, n_pb_neurons = process_metrics(pb_data_chunks)
+108: 
+109: # 3. Plotting
+110: fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+111: 
+112: # Define sequential x-coordinates for Tracking (left) and Playback (right)
+113: x_tr = np.arange(n_groups)
+114: x_pb = np.arange(n_groups) + n_groups
+115: all_x_vals = list(x_tr) + list(x_pb)
+116: divider_x = n_groups - 0.5  # The midpoint between Tracking and Playback
+117: 
+118: metrics = ['base', 'peak', 'evoked']
+119: titles = ['Baseline Z-Score (-0.2s to 0s)', 'Peak Response Z-Score', 'Total Evoked Response (Peak - Baseline)']
+120: 
+121: for i, metric in enumerate(metrics):
+122:     ax = axes[i]
+123:     
+124:     # Plot Tracking (Red, Left side)
+125:     tr_m = np.array(tr_means[metric])
+126:     tr_s = np.array(tr_sems[metric])
+127:     ax.errorbar(x_tr, tr_m, yerr=tr_s, color='red', marker='o', markersize=8, 
+128:                 linewidth=2.5, label=f'Tracking (n={n_tr_neurons})', capsize=5)
+129:     
+130:     # Plot Playback (Black, Right side)
+131:     pb_m = np.array(pb_means[metric])
+132:     pb_s = np.array(pb_sems[metric])
+133:     ax.errorbar(x_pb, pb_m, yerr=pb_s, color='black', marker='o', markersize=8, 
+134:                 linewidth=2.5, label=f'Playback (n={n_pb_neurons})', capsize=5)
+135:     
+136:     # Formatting
+137:     ax.axvline(x=divider_x, color='gray', linestyle='--', alpha=0.8, zorder=1) # Visual separator
+138:     ax.set_title(titles[i], fontsize=14, fontweight='bold')
+139:     ax.set_xticks(all_x_vals)
+140:     ax.set_xticklabels(all_x_labels, rotation=45, ha='right') # Rotated for readability
+141:     ax.grid(True, alpha=0.3)
+142:     
+143:     if i == 0:
+144:         ax.set_ylabel('Mean Z-Score', fontsize=12)
+145:     ax.legend(loc='best')
+146: 
+147: plt.suptitle(f'Chronological Z-Score Metrics ({n_per_group} triggers/chunk)', fontsize=18, y=1.05)
+148: plt.tight_layout()
+149: plt.show()
+--- Cell 34 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: # ==========================================
+5: # --- CUSTOMIZABLE VARIABLES ---
+6: n_per_group = 100    # Number of triggers per group
+7: n_groups = 3       # Number of chronological groups per condition
+8: # ==========================================
+9: 
+10: total_needed = n_groups * n_per_group
+11: 
+12: # Define indices for calculating metrics
+13: baseline_bins = int(0.2 / dt)
+14: idx_base_start = n_bins_pre - baseline_bins
+15: idx_base_end = n_bins_pre  # Sound onset (time 0)
+16: idx_peak_start = n_bins_pre
+17: idx_peak_end = expected_length
+18: 
+19: # Generate x-axis labels
+20: x_labels_tr = [f"TR: Last {i*n_per_group}-{(i-1)*n_per_group+1}" for i in range(n_groups, 0, -1)]
+21: x_labels_pb = [f"PB: First {i*n_per_group+1}-{(i+1)*n_per_group}" for i in range(n_groups)]
+22: all_x_labels = x_labels_tr + x_labels_pb
+23: 
+24: # Containers for the chunks
+25: tr_data_chunks = [[] for _ in range(n_groups)]
+26: pb_data_chunks = [[] for _ in range(n_groups)]
+27: 
+28: # Helper function
+29: def get_subset_channel_means(n_data, event_indices):
+30:     segments = []
+31:     for i in event_indices:
+32:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+33:         if 0 <= start and stop <= n_data.shape[-1]:
+34:             seg = n_data[:, start:stop]
+35:             if seg.shape[1] == expected_length:
+36:                 segments.append(seg)
+37:     if len(segments) > 0:
+38:         return np.mean(np.stack(segments, axis=0), axis=0) # Average over the 5 events, keep channels
+39:     return None
+40: 
+41: # 1. Main Processing Loop (Transition-Based)
+42: for n_data, f_data in zip(n_data_s, f_data_s):
+43:     # Get all valid frequency change events and their conditions
+44:     events_all = np.flatnonzero(f_data['Frequency_changes'] == 1)
+45:     if len(events_all) == 0:
+46:         continue
+47:         
+48:     conds_all = f_data['Condition'].values[events_all]
+49:     
+50:     # Find exact indices where condition changes from 0 (Tracking) to 1 (Playback)
+51:     transition_indices = np.where((conds_all[:-1] == 0) & (conds_all[1:] == 1))[0]
+52:     
+53:     for idx in transition_indices:
+54:         # Extract contiguous tracking events BEFORE the transition
+55:         tr_evs = []
+56:         for j in range(idx, -1, -1):
+57:             if conds_all[j] == 0:
+58:                 tr_evs.append(events_all[j])
+59:             else:
+60:                 break
+61:         tr_evs = tr_evs[::-1] # Reverse to chronological order
+62:         
+63:         # Extract contiguous playback events AFTER the transition
+64:         pb_evs = []
+65:         for j in range(idx + 1, len(conds_all)):
+66:             if conds_all[j] == 1:
+67:                 pb_evs.append(events_all[j])
+68:             else:
+69:                 break
+70:                 
+71:         # Only process THIS transition if it has enough events on both sides
+72:         if len(tr_evs) >= total_needed and len(pb_evs) >= total_needed:
+73:             
+74:             # --- Tracking Chunks (Chronological from the end of the tracking block) ---
+75:             for chunk_idx, i in enumerate(range(n_groups, 0, -1)):
+76:                 start = -i * n_per_group
+77:                 end = -(i - 1) * n_per_group if i > 1 else None
+78:                 evs = tr_evs[start:end]
+79:                 mean_trace = get_subset_channel_means(n_data, evs)
+80:                 if mean_trace is not None:
+81:                     tr_data_chunks[chunk_idx].append(mean_trace)
+82: 
+83:             # --- Playback Chunks (Chronological from the start of the playback block) ---
+84:             for chunk_idx, i in enumerate(range(n_groups)):
+85:                 start = i * n_per_group
+86:                 end = (i + 1) * n_per_group
+87:                 evs = pb_evs[start:end]
+88:                 mean_trace = get_subset_channel_means(n_data, evs)
+89:                 if mean_trace is not None:
+90:                     pb_data_chunks[chunk_idx].append(mean_trace)
+91: 
+92: # 2. Compute Z-Scores and Metrics
+93: def process_metrics(data_chunks):
+94:     means = {'base': [], 'peak': [], 'evoked': []}
+95:     sems = {'base': [], 'peak': [], 'evoked': []}
+96:     n_samples = 0
+97:     
+98:     for chunk in data_chunks:
+99:         if len(chunk) > 0:
+100:             # Concatenate along axis=0. Shape = (n_channels * valid_transitions, expected_length)
+101:             final_dat = np.concatenate(chunk, axis=0)
+102:             n_samples = final_dat.shape[0] # N = Transitions * Channels
+103:             
+104:             # Z-Score independently per sample
+105:             mean_time = np.mean(final_dat, axis=1, keepdims=True)
+106:             std_time = np.std(final_dat, axis=1, keepdims=True) + 1e-8
+107:             z_dat = (final_dat - mean_time) / std_time
+108:             
+109:             # Extract Metrics
+110:             base = np.mean(z_dat[:, idx_base_start:idx_base_end], axis=1)
+111:             peak = np.max(z_dat[:, idx_peak_start:idx_peak_end], axis=1)
+112:             evoked = peak - base
+113:             
+114:             # Store Means and SEMs
+115:             means['base'].append(np.mean(base))
+116:             sems['base'].append(np.std(base) / np.sqrt(n_samples))
+117:             
+118:             means['peak'].append(np.mean(peak))
+119:             sems['peak'].append(np.std(peak) / np.sqrt(n_samples))
+120:             
+121:             means['evoked'].append(np.mean(evoked))
+122:             sems['evoked'].append(np.std(evoked) / np.sqrt(n_samples))
+123:         else:
+124:             for k in means:
+125:                 means[k].append(np.nan)
+126:                 sems[k].append(np.nan)
+127:                 
+128:     return means, sems, n_samples
+129: 
+130: tr_means, tr_sems, n_tr_samples = process_metrics(tr_data_chunks)
+131: pb_means, pb_sems, n_pb_samples = process_metrics(pb_data_chunks)
+132: 
+133: # 3. Plotting
+134: fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+135: 
+136: x_tr = np.arange(n_groups)
+137: x_pb = np.arange(n_groups) + n_groups
+138: all_x_vals = list(x_tr) + list(x_pb)
+139: divider_x = n_groups - 0.5 
+140: 
+141: metrics = ['base', 'peak', 'evoked']
+142: titles = ['Baseline Z-Score (-0.2s to 0s)', 'Peak Response Z-Score', 'Total Evoked Response (Peak - Baseline)']
+143: 
+144: for i, metric in enumerate(metrics):
+145:     ax = axes[i]
+146:     
+147:     # Plot Tracking (Red, Left side)
+148:     tr_m = np.array(tr_means[metric])
+149:     tr_s = np.array(tr_sems[metric])
+150:     ax.errorbar(x_tr, tr_m, yerr=tr_s, color='red', marker='o', markersize=8, 
+151:                 linewidth=2.5, label=f'Tracking', capsize=5)
+152:     
+153:     # Plot Playback (Black, Right side)
+154:     pb_m = np.array(pb_means[metric])
+155:     pb_s = np.array(pb_sems[metric])
+156:     ax.errorbar(x_pb, pb_m, yerr=pb_s, color='black', marker='o', markersize=8, 
+157:                 linewidth=2.5, label=f'Playback', capsize=5)
+158:     
+159:     # Formatting
+160:     ax.axvline(x=divider_x, color='gray', linestyle='--', alpha=0.8, zorder=1) 
+161:     ax.set_title(titles[i], fontsize=14, fontweight='bold')
+162:     ax.set_xticks(all_x_vals)
+163:     ax.set_xticklabels(all_x_labels, rotation=45, ha='right') 
+164:     ax.grid(True, alpha=0.3)
+165:     
+166:     # Add N annotation dynamically inside each plot
+167:     ax.text(0.05, 0.95, f'N = {n_pb_samples}\n(Channels × Transitions)', 
+168:             transform=ax.transAxes, fontsize=11, verticalalignment='top', 
+169:             bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='gray'))
+170:     
+171:     if i == 0:
+172:         ax.set_ylabel('Mean Z-Score', fontsize=12)
+173:     ax.legend(loc='lower left')
+174: 
+175: plt.suptitle(f'Chronological Z-Score Metrics Anchored to Local Block Transitions', fontsize=18, y=1.05)
+176: plt.tight_layout()
+177: plt.show()
+--- Cell 36 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: import pandas as pd
+4: 
+5: ## Paramètres ##
+6: t_pre = 0.3   # temps avant trigger (s)
+7: t_post = 0.3  # temps après trigger (s)
+8: n_first = 25  # Nombre de triggers à utiliser (first/last)
+9: 
+10: # Remarque : assurez-vous que 'dt' est bien défini dans votre environnement (ex: dt = 0.005)
+11: 
+12: def get_psth_last_n_triggers_tracking(data, f_data, t_pre, t_post, dt, n_last=10):
+13:     """
+14:     Calcule le PSTH moyen autour des n derniers triggers pour CHAQUE block,
+15:     uniquement pour les trials Tracking (condition == 0).
+16: 
+17:     Returns:
+18:         block_psths : dict {block_id: array(neurones x bins)}
+19:         time_axis : temps relatif au trigger
+20:     """
+21:     frequency_changes = f_data['Frequency_changes'].values
+22:     condition = f_data['Condition'].values
+23:     block = f_data['Block'].values
+24:     n_neurons, n_bins = data.shape
+25: 
+26:     n_bins_pre = int(t_pre / dt)
+27:     n_bins_post = int(t_post / dt)
+28: 
+29:     # --- Indices des triggers de Tracking ---
+30:     trigger_idx = np.where((frequency_changes == 1) & (condition == 0))[0]
+31: 
+32:     unique_blocks = np.unique(block[trigger_idx])
+33:     block_psths = {}
+34: 
+35:     for b in unique_blocks:
+36:         b_triggers = trigger_idx[block[trigger_idx] == b]
+37:         if len(b_triggers) > 0:
+38:             last_triggers = b_triggers[-n_last:]
+39:             
+40:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+41:             n_segments = 0
+42:             
+43:             for idx in last_triggers:
+44:                 start = int(idx - n_bins_pre)
+45:                 end = int(idx + n_bins_post)
+46:                 if start >= 0 and end <= n_bins:
+47:                     psth_all += data[:, start:end]
+48:                     n_segments += 1
+49:             
+50:             # --- Moyenne par neurone POUR CE BLOCK ---
+51:             if n_segments > 0:
+52:                 block_psths[b] = psth_all / n_segments
+53: 
+54:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+55:     return block_psths, time_axis
+56: 
+57: 
+58: def get_psth_first_n_triggers_playback(data, f_data, t_pre, t_post, dt, n_first=10):
+59:     """
+60:     Calcule le PSTH moyen autour des n premiers triggers pour CHAQUE block,
+61:     uniquement pour les trials Playback (condition == 1).
+62: 
+63:     Returns:
+64:         block_psths : dict {block_id: array(neurones x bins)}
+65:         time_axis : temps relatif au trigger
+66:     """
+67:     frequency_changes = f_data['Frequency_changes'].values
+68:     condition = f_data['Condition'].values
+69:     block = f_data['Block'].values
+70:     n_neurons, n_bins = data.shape
+71: 
+72:     n_bins_pre = int(t_pre / dt)
+73:     n_bins_post = int(t_post / dt)
+74: 
+75:     # --- Indices des triggers de Playback ---
+76:     trigger_idx = np.where((frequency_changes == 1) & (condition == 1))[0]
+77: 
+78:     unique_blocks = np.unique(block[trigger_idx])
+79:     block_psths = {}
+80: 
+81:     for b in unique_blocks:
+82:         b_triggers = trigger_idx[block[trigger_idx] == b]
+83:         if len(b_triggers) > 0:
+84:             first_triggers = b_triggers[:n_first]
+85:             
+86:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+87:             n_segments = 0
+88:             
+89:             for idx in first_triggers:
+90:                 start = int(idx - n_bins_pre)
+91:                 end = int(idx + n_bins_post)
+92:                 if start >= 0 and end <= n_bins:
+93:                     psth_all += data[:, start:end]
+94:                     n_segments += 1
+95:             
+96:             # --- Moyenne par neurone POUR CE BLOCK ---
+97:             if n_segments > 0:
+98:                 block_psths[b] = psth_all / n_segments
+99: 
+100:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+101:     return block_psths, time_axis
+102: 
+103: 
+104: # ==========================================================
+105: # Exécution Principale
+106: # ==========================================================
+107: 
+108: all_playback, all_tracking = [], []
+109: 
+110: # --- Collecte des PSTHs par transition Tracking -> Playback ---
+111: for n_data, f_data in zip(n_data_s, f_data_s):
+112:     # Dictionnaires contenant les PSTHs calculés par block
+113:     dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_first)
+114:     dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_first)
+115: 
+116:     # Identifier les transitions en regardant l'ordre chronologique des blocks
+117:     blocks_in_order = f_data['Block'].unique()
+118:     
+119:     for i in range(len(blocks_in_order) - 1):
+120:         b_curr = blocks_in_order[i]
+121:         b_next = blocks_in_order[i+1]
+122:         
+123:         # Si le block courant est dans notre dictionnaire Tracking 
+124:         # ET que le block suivant est dans notre dictionnaire Playback : c'est une transition !
+125:         if b_curr in dict_tr and b_next in dict_pb:
+126:             all_tracking.append(dict_tr[b_curr])
+127:             all_playback.append(dict_pb[b_next])
+128: 
+129: if len(all_tracking) > 0 and len(all_playback) > 0:
+130:     # --- Convertir en array et empiler ---
+131:     # np.vstack empile les tableaux de taille (n_canaux, bins). 
+132:     # Le résultat est de taille (n_canaux * transitions, bins)
+133:     tracking_arr = np.vstack(all_tracking)  
+134:     playback_arr = np.vstack(all_playback)
+135: 
+136:     # N = Nombre total de canaux multiplié par le nombre de transitions identifiées
+137:     n_total_samples = tracking_arr.shape[0]
+138: 
+139:     # --- Moyenne et SEM (en calculant sur l'axe 0 = échantillons totaux) ---
+140:     tracking_mean = np.nanmean(tracking_arr, axis=0)
+141:     tracking_sem  = np.nanstd(tracking_arr, axis=0) / np.sqrt(n_total_samples)
+142: 
+143:     playback_mean = np.nanmean(playback_arr, axis=0)
+144:     playback_sem  = np.nanstd(playback_arr, axis=0) / np.sqrt(n_total_samples)
+145: 
+146:     # --- Plot ---
+147:     plt.figure(figsize=(8, 6))
+148:     
+149:     # Tracking
+150:     plt.plot(psth_bins, tracking_mean, c='red', linewidth=2, label=f'Tracking (last {n_first} triggers)')
+151:     plt.fill_between(psth_bins, tracking_mean - tracking_sem, tracking_mean + tracking_sem, color='red', alpha=0.2)
+152: 
+153:     # Playback
+154:     plt.plot(psth_bins, playback_mean, c='black', linewidth=2, label=f'Playback (first {n_first} triggers)')
+155:     plt.fill_between(psth_bins, playback_mean - playback_sem, playback_mean + playback_sem, color='black', alpha=0.2)
+156: 
+157:     # Esthétique
+158:     plt.axvline(0, color='gray', linestyle='--', alpha=0.8)
+159:     plt.xlabel('Time relative to event (s)', fontsize=12)
+160:     plt.ylabel('Firing Rate (spk/s)', fontsize=12)
+161:     plt.legend(frameon=False)
+162:     plt.title('PSTH Tracking vs Playback\nAnchored to Block Transitions', fontsize=14)
+163: 
+164:     # Retirer les axes du haut et de droite
+165:     ax = plt.gca()
+166:     ax.spines['top'].set_visible(False)
+167:     ax.spines['right'].set_visible(False)
+168:     
+169:     # Ajouter explicitement le 'N' calculé dans un encadré
+170:     ax.text(0.05, 0.95, f'N = {n_total_samples}\n(Channels × Transitions)', 
+171:             transform=ax.transAxes, fontsize=11, verticalalignment='top', 
+172:             bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='gray'))
+173: 
+174:     plt.tight_layout()
+175:     plt.show()
+176: else:
+177:     print("Aucune transition Tracking -> Playback trouvée avec ces critères.")
+--- Cell 37 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: ## Paramètres ##
+5: t_pre = 0.3   # temps avant trigger (s)
+6: t_post = 0.3  # temps après trigger (s)
+7: 
+8: # Liste des puissances de 2 : [1, 2, 4, 8, 16, 32, 64, 128, 256]
+9: n_values = [2**i for i in range(10)]
+10: 
+11: def get_psth_last_n_triggers_tracking(data, f_data, t_pre, t_post, dt, n_last=10):
+12:     frequency_changes = f_data['Frequency_changes'].values
+13:     condition = f_data['Condition'].values
+14:     block = f_data['Block'].values
+15:     n_neurons, n_bins = data.shape
+16: 
+17:     n_bins_pre = int(t_pre / dt)
+18:     n_bins_post = int(t_post / dt)
+19: 
+20:     trigger_idx = np.where((frequency_changes == 1) & (condition == 0))[0]
+21:     unique_blocks = np.unique(block[trigger_idx])
+22:     block_psths = {}
+23: 
+24:     for b in unique_blocks:
+25:         b_triggers = trigger_idx[block[trigger_idx] == b]
+26:         if len(b_triggers) > 0:
+27:             last_triggers = b_triggers[-n_last:]
+28:             
+29:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+30:             n_segments = 0
+31:             
+32:             for idx in last_triggers:
+33:                 start = int(idx - n_bins_pre)
+34:                 end = int(idx + n_bins_post)
+35:                 if start >= 0 and end <= n_bins:
+36:                     psth_all += data[:, start:end]
+37:                     n_segments += 1
+38:             
+39:             if n_segments > 0:
+40:                 block_psths[b] = psth_all / n_segments
+41: 
+42:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+43:     return block_psths, time_axis
+44: 
+45: 
+46: def get_psth_first_n_triggers_playback(data, f_data, t_pre, t_post, dt, n_first=10):
+47:     frequency_changes = f_data['Frequency_changes'].values
+48:     condition = f_data['Condition'].values
+49:     block = f_data['Block'].values
+50:     n_neurons, n_bins = data.shape
+51: 
+52:     n_bins_pre = int(t_pre / dt)
+53:     n_bins_post = int(t_post / dt)
+54: 
+55:     trigger_idx = np.where((frequency_changes == 1) & (condition == 1))[0]
+56:     unique_blocks = np.unique(block[trigger_idx])
+57:     block_psths = {}
+58: 
+59:     for b in unique_blocks:
+60:         b_triggers = trigger_idx[block[trigger_idx] == b]
+61:         if len(b_triggers) > 0:
+62:             first_triggers = b_triggers[:n_first]
+63:             
+64:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+65:             n_segments = 0
+66:             
+67:             for idx in first_triggers:
+68:                 start = int(idx - n_bins_pre)
+69:                 end = int(idx + n_bins_post)
+70:                 if start >= 0 and end <= n_bins:
+71:                     psth_all += data[:, start:end]
+72:                     n_segments += 1
+73:             
+74:             if n_segments > 0:
+75:                 block_psths[b] = psth_all / n_segments
+76: 
+77:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+78:     return block_psths, time_axis
+79: 
+80: 
+81: # ==========================================================
+82: # Exécution Principale - Grille de Subplots
+83: # ==========================================================
+84: 
+85: # Création de la figure avec une rangée et autant de colonnes que de valeurs de n
+86: fig, axes = plt.subplots(1, len(n_values), figsize=(4 * len(n_values), 5), sharey=True)
+87: 
+88: # S'assurer que axes est itérable si on n'a qu'une seule valeur (au cas où)
+89: if len(n_values) == 1:
+90:     axes = [axes]
+91: 
+92: for ax_idx, n_first in enumerate(n_values):
+93:     all_playback, all_tracking = [], []
+94:     ax = axes[ax_idx]
+95: 
+96:     # Collecte des PSTHs par transition pour le n_first courant
+97:     for n_data, f_data in zip(n_data_s, f_data_s):
+98:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_first)
+99:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_first)
+100: 
+101:         blocks_in_order = f_data['Block'].unique()
+102:         
+103:         for i in range(len(blocks_in_order) - 1):
+104:             b_curr = blocks_in_order[i]
+105:             b_next = blocks_in_order[i+1]
+106:             
+107:             if b_curr in dict_tr and b_next in dict_pb:
+108:                 all_tracking.append(dict_tr[b_curr])
+109:                 all_playback.append(dict_pb[b_next])
+110: 
+111:     if len(all_tracking) > 0 and len(all_playback) > 0:
+112:         # Conversion et moyenne
+113:         tracking_arr = np.vstack(all_tracking)  
+114:         playback_arr = np.vstack(all_playback)
+115:         n_total_samples = tracking_arr.shape[0]
+116: 
+117:         tracking_mean = np.nanmean(tracking_arr, axis=0)
+118:         tracking_sem  = np.nanstd(tracking_arr, axis=0) / np.sqrt(n_total_samples)
+119: 
+120:         playback_mean = np.nanmean(playback_arr, axis=0)
+121:         playback_sem  = np.nanstd(playback_arr, axis=0) / np.sqrt(n_total_samples)
+122: 
+123:         # Plot Tracking (Rouge)
+124:         ax.plot(psth_bins, tracking_mean, c='red', linewidth=2, label='Tracking')
+125:         ax.fill_between(psth_bins, tracking_mean - tracking_sem, tracking_mean + tracking_sem, color='red', alpha=0.2)
+126: 
+127:         # Plot Playback (Noir)
+128:         ax.plot(psth_bins, playback_mean, c='black', linewidth=2, label='Playback')
+129:         ax.fill_between(psth_bins, playback_mean - playback_sem, playback_mean + playback_sem, color='black', alpha=0.2)
+130: 
+131:         # Esthétique locale du subplot
+132:         ax.axvline(0, color='gray', linestyle='--', alpha=0.8)
+133:         ax.set_title(f'n = {n_first}', fontsize=14, fontweight='bold')
+134:         ax.set_xlabel('Time (s)', fontsize=12)
+135:         
+136:         # Le label 'Y' uniquement sur le graphique le plus à gauche
+137:         if ax_idx == 0:
+138:             ax.set_ylabel('Firing Rate (spk/s)', fontsize=12)
+139:         
+140:         # Ajouter N dans le subplot
+141:         ax.text(0.05, 0.95, f'N = {n_total_samples}', 
+142:                 transform=ax.transAxes, fontsize=10, verticalalignment='top', 
+143:                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray'))
+144:         
+145:     else:
+146:         ax.set_title(f'n = {n_first}\n(No data)', fontsize=12)
+147: 
+148:     # Retirer les cadres superflus
+149:     ax.spines['top'].set_visible(False)
+150:     ax.spines['right'].set_visible(False)
+151: 
+152: # On place la légende sur le dernier graphique pour ne pas surcharger
+153: axes[-1].legend(frameon=False, loc='upper right')
+154: 
+155: plt.suptitle('PSTH Last Trackings vs First Playbacks across n Triggers', fontsize=18, y=1.05)
+156: plt.tight_layout()
+157: plt.show()
+--- Cell 38 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: ## Paramètres ##
+5: t_pre = 0.3   # temps avant trigger (s)
+6: t_post = 0.3  # temps après trigger (s)
+7: 
+8: # Liste des puissances de 2 : [1, 2, 4, 8, 16, 32, 64, 128, 256]
+9: n_values = [2**i for i in range(10)]
+10: 
+11: # ==========================================================
+12: # 0. DATA SANITIZATION (Safe Removal of Condition -1.0)
+13: # ==========================================================
+14: # We neutralize Condition -1.0 instead of dropping rows to preserve 
+15: # the 1-to-1 index alignment with the n_data timebins.
+16: for f_data in f_data_s:
+17:     mask = (f_data['Condition'] == -1.0)
+18:     f_data.loc[mask, 'Frequency_changes'] = False  # Changed from 0 to False
+19:         # Remove the condition label entirely
+20: # ==========================================================
+21: 
+22: def get_psth_last_n_triggers_tracking(data, f_data, t_pre, t_post, dt, n_last=10):
+23:     frequency_changes = f_data['Frequency_changes'].values
+24:     condition = f_data['Condition'].values
+25:     block = f_data['Block'].values
+26:     n_neurons, n_bins = data.shape
+27: 
+28:     n_bins_pre = int(t_pre / dt)
+29:     n_bins_post = int(t_post / dt)
+30: 
+31:     # La condition -1.0 étant neutralisée, ceci ne trouvera que les vrais 0
+32:     trigger_idx = np.where((frequency_changes == 1) & (condition == 0))[0]
+33:     unique_blocks = np.unique(block[trigger_idx])
+34:     block_psths = {}
+35: 
+36:     for b in unique_blocks:
+37:         b_triggers = trigger_idx[block[trigger_idx] == b]
+38:         if len(b_triggers) > 0:
+39:             last_triggers = b_triggers[-n_last:]
+40:             
+41:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+42:             n_segments = 0
+43:             
+44:             for idx in last_triggers:
+45:                 start = int(idx - n_bins_pre)
+46:                 end = int(idx + n_bins_post)
+47:                 if start >= 0 and end <= n_bins:
+48:                     psth_all += data[:, start:end]
+49:                     n_segments += 1
+50:             
+51:             if n_segments > 0:
+52:                 block_psths[b] = psth_all / n_segments
+53: 
+54:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+55:     return block_psths, time_axis
+56: 
+57: 
+58: def get_psth_first_n_triggers_playback(data, f_data, t_pre, t_post, dt, n_first=10):
+59:     frequency_changes = f_data['Frequency_changes'].values
+60:     condition = f_data['Condition'].values
+61:     block = f_data['Block'].values
+62:     n_neurons, n_bins = data.shape
+63: 
+64:     n_bins_pre = int(t_pre / dt)
+65:     n_bins_post = int(t_post / dt)
+66: 
+67:     trigger_idx = np.where((frequency_changes == 1) & (condition == 1))[0]
+68:     unique_blocks = np.unique(block[trigger_idx])
+69:     block_psths = {}
+70: 
+71:     for b in unique_blocks:
+72:         b_triggers = trigger_idx[block[trigger_idx] == b]
+73:         if len(b_triggers) > 0:
+74:             first_triggers = b_triggers[:n_first]
+75:             
+76:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+77:             n_segments = 0
+78:             
+79:             for idx in first_triggers:
+80:                 start = int(idx - n_bins_pre)
+81:                 end = int(idx + n_bins_post)
+82:                 if start >= 0 and end <= n_bins:
+83:                     psth_all += data[:, start:end]
+84:                     n_segments += 1
+85:             
+86:             if n_segments > 0:
+87:                 block_psths[b] = psth_all / n_segments
+88: 
+89:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+90:     return block_psths, time_axis
+91: 
+92: 
+93: # ==========================================================
+94: # Exécution Principale - Grille de Subplots
+95: # ==========================================================
+96: 
+97: # 1. Structure pour stocker les données
+98: data_collection = {}
+99: 
+100: # 2. Collecte des données
+101: for n_val in n_values:
+102:     for n_data, f_data in zip(n_data_s, f_data_s):
+103:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_val)
+104:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_val)
+105: 
+106:         # Chercher tous les blocs réels de cette session qui ont À LA FOIS Tracking et Playback
+107:         valid_blocks = sorted([b for b in f_data['Block'].unique() if b in dict_tr and b in dict_pb])
+108:         
+109:         for actual_b in valid_blocks:
+110:             if actual_b not in data_collection:
+111:                 data_collection[actual_b] = {n: {'tr': [], 'pb': []} for n in n_values}
+112:             
+113:             data_collection[actual_b][n_val]['tr'].append(dict_tr[actual_b])
+114:             data_collection[actual_b][n_val]['pb'].append(dict_pb[actual_b])
+115: 
+116: # 3. Création de la figure
+117: unique_blocks = sorted(data_collection.keys())
+118: n_rows = len(unique_blocks)
+119: n_cols = len(n_values)
+120: 
+121: if n_rows == 0:
+122:     print("Aucun bloc mixte (contenant Tracking ET Playback) n'a été trouvé.")
+123: else:
+124:     fig, axes = plt.subplots(n_rows, n_cols, 
+125:                              figsize=(3.5 * n_cols, 3 * n_rows), 
+126:                              sharey='row', sharex=True)
+127:     
+128:     if n_rows == 1: axes = np.expand_dims(axes, axis=0)
+129:     if n_cols == 1: axes = np.expand_dims(axes, axis=1)
+130: 
+131:     for row_idx, actual_b in enumerate(unique_blocks):
+132:         for col_idx, n_val in enumerate(n_values):
+133:             ax = axes[row_idx, col_idx]
+134:             
+135:             tr_list = data_collection[actual_b][n_val]['tr']
+136:             pb_list = data_collection[actual_b][n_val]['pb']
+137:             
+138:             if len(tr_list) > 0 and len(pb_list) > 0:
+139:                 tracking_arr = np.vstack(tr_list)
+140:                 playback_arr = np.vstack(pb_list)
+141:                 n_total_samples = tracking_arr.shape[0]
+142: 
+143:                 tracking_mean = np.nanmean(tracking_arr, axis=0)
+144:                 tracking_sem  = np.nanstd(tracking_arr, axis=0) / np.sqrt(n_total_samples)
+145: 
+146:                 playback_mean = np.nanmean(playback_arr, axis=0)
+147:                 playback_sem  = np.nanstd(playback_arr, axis=0) / np.sqrt(n_total_samples)
+148: 
+149:                 # Trace les courbes
+150:                 ax.plot(psth_bins, tracking_mean, c='red', linewidth=2)
+151:                 ax.fill_between(psth_bins, tracking_mean - tracking_sem, tracking_mean + tracking_sem, color='red', alpha=0.2)
+152: 
+153:                 ax.plot(psth_bins, playback_mean, c='black', linewidth=2)
+154:                 ax.fill_between(psth_bins, playback_mean - playback_sem, playback_mean + playback_sem, color='black', alpha=0.2)
+155: 
+156:                 ax.text(0.05, 0.95, f'N = {n_total_samples}', 
+157:                         transform=ax.transAxes, fontsize=10, verticalalignment='top', 
+158:                         bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
+159:             else:
+160:                 ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes, color='gray')
+161: 
+162:             # Esthétique de base
+163:             ax.axvline(0, color='gray', linestyle='--', alpha=0.8)
+164:             ax.spines['top'].set_visible(False)
+165:             ax.spines['right'].set_visible(False)
+166: 
+167:             # --- Formatting de la grille ---
+168:             if row_idx == 0:
+169:                 ax.set_title(f'n = {n_val}', fontsize=14, fontweight='bold')
+170:             
+171:             if row_idx == n_rows - 1:
+172:                 ax.set_xlabel('Time (s)', fontsize=12)
+173: 
+174:             if col_idx == 0:
+175:                 ax.set_ylabel(f'Block {actual_b}\nFR (spk/s)', fontsize=12, fontweight='bold')
+176: 
+177:     # Ajout d'une légende globale
+178:     from matplotlib.lines import Line2D
+179:     custom_lines = [Line2D([0], [0], color='red', lw=2),
+180:                     Line2D([0], [0], color='black', lw=2)]
+181:     fig.legend(custom_lines, ['Tracking (Last n)', 'Playback (First n)'], 
+182:                loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=2, frameon=False, fontsize=14)
+183: 
+184:     plt.suptitle('PSTH Evolution Across Blocks (Rows) and Trigger Quantity (Columns)', fontsize=18, y=1.08)
+185:     plt.tight_layout()
+186:     plt.show()
+--- Cell 39 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: ## Paramètres ##
+5: t_pre = 0.3   # temps avant trigger (s)
+6: t_post = 0.3  # temps après trigger (s)
+7: 
+8: # Only n = 32
+9: n_values = [32]
+10: 
+11: # ==========================================================
+12: # 0. DATA SANITIZATION (Safe Removal of Condition -1.0)
+13: # ==========================================================
+14: for f_data in f_data_s:
+15:     mask = (f_data['Condition'] == -1.0)
+16:     f_data.loc[mask, 'Frequency_changes'] = False
+17: # ==========================================================
+18: 
+19: def get_psth_last_n_triggers_tracking(data, f_data, t_pre, t_post, dt, n_last=10):
+20:     frequency_changes = f_data['Frequency_changes'].values
+21:     condition = f_data['Condition'].values
+22:     block = f_data['Block'].values
+23:     n_neurons, n_bins = data.shape
+24: 
+25:     n_bins_pre = int(t_pre / dt)
+26:     n_bins_post = int(t_post / dt)
+27: 
+28:     trigger_idx = np.where((frequency_changes == 1) & (condition == 0))[0]
+29:     unique_blocks = np.unique(block[trigger_idx])
+30:     block_psths = {}
+31: 
+32:     for b in unique_blocks:
+33:         b_triggers = trigger_idx[block[trigger_idx] == b]
+34:         if len(b_triggers) > 0:
+35:             last_triggers = b_triggers[-n_last:]
+36:             
+37:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+38:             n_segments = 0
+39:             
+40:             for idx in last_triggers:
+41:                 start = int(idx - n_bins_pre)
+42:                 end = int(idx + n_bins_post)
+43:                 if start >= 0 and end <= n_bins:
+44:                     psth_all += data[:, start:end]
+45:                     n_segments += 1
+46:             
+47:             if n_segments > 0:
+48:                 block_psths[b] = psth_all / n_segments
+49: 
+50:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+51:     return block_psths, time_axis
+52: 
+53: 
+54: def get_psth_first_n_triggers_playback(data, f_data, t_pre, t_post, dt, n_first=10):
+55:     frequency_changes = f_data['Frequency_changes'].values
+56:     condition = f_data['Condition'].values
+57:     block = f_data['Block'].values
+58:     n_neurons, n_bins = data.shape
+59: 
+60:     n_bins_pre = int(t_pre / dt)
+61:     n_bins_post = int(t_post / dt)
+62: 
+63:     trigger_idx = np.where((frequency_changes == 1) & (condition == 1))[0]
+64:     unique_blocks = np.unique(block[trigger_idx])
+65:     block_psths = {}
+66: 
+67:     for b in unique_blocks:
+68:         b_triggers = trigger_idx[block[trigger_idx] == b]
+69:         if len(b_triggers) > 0:
+70:             first_triggers = b_triggers[:n_first]
+71:             
+72:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+73:             n_segments = 0
+74:             
+75:             for idx in first_triggers:
+76:                 start = int(idx - n_bins_pre)
+77:                 end = int(idx + n_bins_post)
+78:                 if start >= 0 and end <= n_bins:
+79:                     psth_all += data[:, start:end]
+80:                     n_segments += 1
+81:             
+82:             if n_segments > 0:
+83:                 block_psths[b] = psth_all / n_segments
+84: 
+85:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+86:     return block_psths, time_axis
+87: 
+88: 
+89: # ==========================================================
+90: # Exécution Principale - Grille Horizontale (sans bloc 0)
+91: # ==========================================================
+92: 
+93: data_collection = {}
+94: 
+95: # Collecte des données (uniquement pour n = 32)
+96: for n_val in n_values:
+97:     for n_data, f_data in zip(n_data_s, f_data_s):
+98:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_val)
+99:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_val)
+100: 
+101:         valid_blocks = sorted([b for b in f_data['Block'].unique() if b in dict_tr and b in dict_pb])
+102:         
+103:         for actual_b in valid_blocks:
+104:             if actual_b not in data_collection:
+105:                 data_collection[actual_b] = {n_val: {'tr': [], 'pb': []}}
+106:             
+107:             data_collection[actual_b][n_val]['tr'].append(dict_tr[actual_b])
+108:             data_collection[actual_b][n_val]['pb'].append(dict_pb[actual_b])
+109: 
+110: # === EXCLUSION DU BLOC 0 ===
+111: unique_blocks = sorted(data_collection.keys())
+112: unique_blocks = [b for b in unique_blocks if b != 0]   # on retire le bloc 0
+113: 
+114: n_blocks = len(unique_blocks)
+115: 
+116: if n_blocks == 0:
+117:     print("Aucun bloc (autre que 0) contenant Tracking ET Playback n'a été trouvé.")
+118: else:
+119:     # Création de la figure horizontale : 1 ligne, n_blocks colonnes
+120:     fig, axes = plt.subplots(1, n_blocks, 
+121:                              figsize=(4 * n_blocks, 4), 
+122:                              sharey='row', sharex=True,
+123:                              squeeze=False)
+124: 
+125:     for col_idx, actual_b in enumerate(unique_blocks):
+126:         ax = axes[0, col_idx]
+127:         
+128:         tr_list = data_collection[actual_b][32]['tr']
+129:         pb_list = data_collection[actual_b][32]['pb']
+130:         
+131:         if len(tr_list) > 0 and len(pb_list) > 0:
+132:             tracking_arr = np.vstack(tr_list)
+133:             playback_arr = np.vstack(pb_list)
+134:             n_total_samples = tracking_arr.shape[0]
+135: 
+136:             tracking_mean = np.nanmean(tracking_arr, axis=0)
+137:             tracking_sem  = np.nanstd(tracking_arr, axis=0) / np.sqrt(n_total_samples)
+138: 
+139:             playback_mean = np.nanmean(playback_arr, axis=0)
+140:             playback_sem  = np.nanstd(playback_arr, axis=0) / np.sqrt(n_total_samples)
+141: 
+142:             ax.plot(psth_bins, tracking_mean, c='red', linewidth=2)
+143:             ax.fill_between(psth_bins, tracking_mean - tracking_sem, tracking_mean + tracking_sem, color='red', alpha=0.2)
+144: 
+145:             ax.plot(psth_bins, playback_mean, c='black', linewidth=2)
+146:             ax.fill_between(psth_bins, playback_mean - playback_sem, playback_mean + playback_sem, color='black', alpha=0.2)
+147: 
+148:             ax.text(0.05, 0.95, f'N = {n_total_samples}', 
+149:                     transform=ax.transAxes, fontsize=10, verticalalignment='top', 
+150:                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
+151:         else:
+152:             ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes, color='gray')
+153: 
+154:         # Esthétique de base
+155:         ax.axvline(0, color='gray', linestyle='--', alpha=0.8)
+156:         ax.spines['top'].set_visible(False)
+157:         ax.spines['right'].set_visible(False)
+158: 
+159:         # --- Étiquetage ---
+160:         ax.set_title(f'Block {actual_b}', fontsize=14, fontweight='bold')
+161:         ax.set_xlabel('Time (s)', fontsize=12)
+162:         
+163:         if col_idx == 0:
+164:             ax.set_ylabel('FR (spk/s)', fontsize=12, fontweight='bold')
+165: 
+166:     # Légende globale
+167:     from matplotlib.lines import Line2D
+168:     custom_lines = [Line2D([0], [0], color='red', lw=2),
+169:                     Line2D([0], [0], color='black', lw=2)]
+170:     fig.legend(custom_lines, ['Tracking (last 32)', 'Playback (first 32)'], 
+171:                loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=2, frameon=False, fontsize=14)
+172: 
+173:     plt.suptitle('PSTH for n = 32 triggers (excluding block 0)', fontsize=18, y=1.08)
+174:     plt.tight_layout()
+175:     plt.show()
+--- Cell 41 ---
+1: import numpy as np
+2: import matplotlib.pyplot as plt
+3: 
+4: ## Paramètres ##
+5: t_pre = 0.3   # temps avant trigger (s)
+6: t_post = 0.3  # temps après trigger (s)
+7: 
+8: # Seulement n = 32
+9: n_values = [16]
+10: 
+11: # ==========================================================
+12: # 0. DATA SANITIZATION (Safe Removal of Condition -1.0)
+13: # ==========================================================
+14: # We neutralize Condition -1.0 instead of dropping rows to preserve 
+15: # the 1-to-1 index alignment with the n_data timebins.
+16: for f_data in f_data_s:
+17:     mask = (f_data['Condition'] == -1.0)
+18:     f_data.loc[mask, 'Frequency_changes'] = False  # Changed from 0 to False
+19:         # Remove the condition label entirely
+20: # ==========================================================
+21: 
+22: def get_psth_last_n_triggers_tracking(data, f_data, t_pre, t_post, dt, n_last=10):
+23:     frequency_changes = f_data['Frequency_changes'].values
+24:     condition = f_data['Condition'].values
+25:     block = f_data['Block'].values
+26:     n_neurons, n_bins = data.shape
+27: 
+28:     n_bins_pre = int(t_pre / dt)
+29:     n_bins_post = int(t_post / dt)
+30: 
+31:     # La condition -1.0 étant neutralisée, ceci ne trouvera que les vrais 0
+32:     trigger_idx = np.where((frequency_changes == 1) & (condition == 0))[0]
+33:     unique_blocks = np.unique(block[trigger_idx])
+34:     block_psths = {}
+35: 
+36:     for b in unique_blocks:
+37:         b_triggers = trigger_idx[block[trigger_idx] == b]
+38:         if len(b_triggers) > 0:
+39:             last_triggers = b_triggers[-n_last:]
+40:             
+41:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+42:             n_segments = 0
+43:             
+44:             for idx in last_triggers:
+45:                 start = int(idx - n_bins_pre)
+46:                 end = int(idx + n_bins_post)
+47:                 if start >= 0 and end <= n_bins:
+48:                     psth_all += data[:, start:end]
+49:                     n_segments += 1
+50:             
+51:             if n_segments > 0:
+52:                 block_psths[b] = psth_all / n_segments
+53: 
+54:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+55:     return block_psths, time_axis
+56: 
+57: 
+58: def get_psth_first_n_triggers_playback(data, f_data, t_pre, t_post, dt, n_first=10):
+59:     frequency_changes = f_data['Frequency_changes'].values
+60:     condition = f_data['Condition'].values
+61:     block = f_data['Block'].values
+62:     n_neurons, n_bins = data.shape
+63: 
+64:     n_bins_pre = int(t_pre / dt)
+65:     n_bins_post = int(t_post / dt)
+66: 
+67:     trigger_idx = np.where((frequency_changes == 1) & (condition == 1))[0]
+68:     unique_blocks = np.unique(block[trigger_idx])
+69:     block_psths = {}
+70: 
+71:     for b in unique_blocks:
+72:         b_triggers = trigger_idx[block[trigger_idx] == b]
+73:         if len(b_triggers) > 0:
+74:             first_triggers = b_triggers[:n_first]
+75:             
+76:             psth_all = np.zeros((n_neurons, n_bins_pre + n_bins_post))
+77:             n_segments = 0
+78:             
+79:             for idx in first_triggers:
+80:                 start = int(idx - n_bins_pre)
+81:                 end = int(idx + n_bins_post)
+82:                 if start >= 0 and end <= n_bins:
+83:                     psth_all += data[:, start:end]
+84:                     n_segments += 1
+85:             
+86:             if n_segments > 0:
+87:                 block_psths[b] = psth_all / n_segments
+88: 
+89:     time_axis = np.arange(-n_bins_pre, n_bins_post) * dt
+90:     return block_psths, time_axis
+91: 
+92: 
+93: # ==========================================================
+94: # Exécution Principale - Grille de Subplots
+95: # ==========================================================
+96: 
+97: # 1. Structure pour stocker les données
+98: data_collection = {}
+99: 
+100: # 2. Collecte des données
+101: for n_val in n_values:
+102:     for n_data, f_data in zip(n_data_s, f_data_s):
+103:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_val)
+104:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_val)
+105: 
+106:         # Chercher tous les blocs réels (SAUF LE BLOC 0) qui ont À LA FOIS Tracking et Playback
+107:         valid_blocks = sorted([b for b in f_data['Block'].unique() if b in dict_tr and b in dict_pb and b != 0])
+108:         
+109:         for actual_b in valid_blocks:
+110:             if actual_b not in data_collection:
+111:                 data_collection[actual_b] = {n: {'tr': [], 'pb': []} for n in n_values}
+112:             
+113:             data_collection[actual_b][n_val]['tr'].append(dict_tr[actual_b])
+114:             data_collection[actual_b][n_val]['pb'].append(dict_pb[actual_b])
+115: 
+116: # 3. Création de la figure
+117: unique_blocks = sorted(data_collection.keys())
+118: 
+119: # --- Changement d'orientation de la grille ---
+120: n_rows = len(n_values)  # Sera de 1 car n_values = [32]
+121: n_cols = len(unique_blocks) # Les blocs sont maintenant en colonnes
+122: 
+123: if n_cols == 0:
+124:     print("Aucun bloc mixte (contenant Tracking ET Playback et différent de 0) n'a été trouvé.")
+125: else:
+126:     fig, axes = plt.subplots(n_rows, n_cols, 
+127:                              figsize=(3.5 * n_cols, 4), # Hauteur fixée, largeur adaptative
+128:                              sharey=True, sharex=True)
+129:     
+130:     # Sécuriser le formatage du tableau d'axes (2D array)
+131:     if n_rows == 1 and n_cols == 1:
+132:         axes = np.array([[axes]])
+133:     elif n_rows == 1:
+134:         axes = axes[np.newaxis, :]
+135:     elif n_cols == 1:
+136:         axes = axes[:, np.newaxis]
+137: 
+138:     # Inversion de la boucle pour s'adapter à la nouvelle orientation
+139:     for col_idx, actual_b in enumerate(unique_blocks):
+140:         for row_idx, n_val in enumerate(n_values):
+141:             ax = axes[row_idx, col_idx]
+142:             
+143:             tr_list = data_collection[actual_b][n_val]['tr']
+144:             pb_list = data_collection[actual_b][n_val]['pb']
+145:             
+146:             if len(tr_list) > 0 and len(pb_list) > 0:
+147:                 tracking_arr = np.vstack(tr_list)
+148:                 playback_arr = np.vstack(pb_list)
+149:                 n_total_samples = tracking_arr.shape[0]
+150: 
+151:                 tracking_mean = np.nanmean(tracking_arr, axis=0)
+152:                 tracking_sem  = np.nanstd(tracking_arr, axis=0) / np.sqrt(n_total_samples)
+153: 
+154:                 playback_mean = np.nanmean(playback_arr, axis=0)
+155:                 playback_sem  = np.nanstd(playback_arr, axis=0) / np.sqrt(n_total_samples)
+156: 
+157:                 # Trace les courbes
+158:                 ax.plot(psth_bins, tracking_mean, c='red', linewidth=2)
+159:                 ax.fill_between(psth_bins, tracking_mean - tracking_sem, tracking_mean + tracking_sem, color='red', alpha=0.2)
+160: 
+161:                 ax.plot(psth_bins, playback_mean, c='black', linewidth=2)
+162:                 ax.fill_between(psth_bins, playback_mean - playback_sem, playback_mean + playback_sem, color='black', alpha=0.2)
+163: 
+164:                 ax.text(0.05, 0.95, f'N = {n_total_samples}', 
+165:                         transform=ax.transAxes, fontsize=10, verticalalignment='top', 
+166:                         bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='none'))
+167:             else:
+168:                 ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes, color='gray')
+169: 
+170:             # Esthétique de base
+171:             ax.axvline(0, color='gray', linestyle='--', alpha=0.8)
+172:             ax.spines['top'].set_visible(False)
+173:             ax.spines['right'].set_visible(False)
+174: 
+175:             # --- Formatting de la grille ---
+176:             # Le titre devient le numéro de bloc
+177:             if row_idx == 0:
+178:                 ax.set_title(f'Block {actual_b}', fontsize=14, fontweight='bold')
+179:             
+180:             # L'axe X s'applique à tous (car une seule ligne)
+181:             if row_idx == n_rows - 1:
+182:                 ax.set_xlabel('Time (s)', fontsize=12)
+183: 
+184:             # L'axe Y s'applique uniquement à la première colonne
+185:             if col_idx == 0:
+186:                 ax.set_ylabel('FR (spk/s)', fontsize=12, fontweight='bold')
+187: 
+188:     # Ajout d'une légende globale
+189:     from matplotlib.lines import Line2D
+190:     custom_lines = [Line2D([0], [0], color='red', lw=2),
+191:                     Line2D([0], [0], color='black', lw=2)]
+192:     fig.legend(custom_lines, ['Tracking (Last 32)', 'Playback (First 32)'], 
+193:                loc='upper center', bbox_to_anchor=(0.5, 1.10), ncol=2, frameon=False, fontsize=14)
+194: 
+195:     plt.suptitle('PSTH Comparison: Tracking vs Playback Across Blocks (n=32)', fontsize=16, y=1.18)
+196:     plt.tight_layout()
+197:     plt.show()
+--- Cell 44 ---
+1: import pandas as pd
+2: import numpy as np
+3: 
+4: # Define time windows based on your dt
+5: baseline_bins = int(0.2 / dt)
+6: idx_base_start = n_bins_pre - baseline_bins
+7: idx_base_end = n_bins_pre  # Event trigger (time 0)
+8: idx_peak_start = n_bins_pre
+9: idx_peak_end = n_bins_pre + int(t_post / dt)
+10: 
+11: quantified_results = []
+12: 
+13: # Loop through the data_collection
+14: for block_id, nt_dict in sorted(data_collection.items()):
+15:     
+16:     # SAFER ITERATION: Loop directly through the keys inside the dictionary
+17:     for n_val, trials_data in nt_dict.items():
+18:         tr_list = trials_data['tr']
+19:         pb_list = trials_data['pb']
+20:         
+21:         # Only process if both conditions have data for this 'n_val'
+22:         if len(tr_list) > 0 and len(pb_list) > 0:
+23:             # Stack the trial averages
+24:             tracking_arr = np.vstack(tr_list)
+25:             playback_arr = np.vstack(pb_list)
+26:             
+27:             n_samples = tracking_arr.shape[0]
+28:             
+29:             # --- Calculate Tracking Metrics (Raw Firing Rate) ---
+30:             # If your arrays are in "spikes per bin", you can divide by dt here to get spk/s 
+31:             # e.g., tr_base = np.mean(tracking_arr[:, idx_base_start:idx_base_end], axis=1) / dt
+32:             tr_base = np.mean(tracking_arr[:, idx_base_start:idx_base_end], axis=1)
+33:             tr_peak = np.max(tracking_arr[:, idx_peak_start:idx_peak_end], axis=1)
+34:             tr_evoked = tr_peak - tr_base
+35:             
+36:             # --- Calculate Playback Metrics (Raw Firing Rate) ---
+37:             pb_base = np.mean(playback_arr[:, idx_base_start:idx_base_end], axis=1)
+38:             pb_peak = np.max(playback_arr[:, idx_peak_start:idx_peak_end], axis=1)
+39:             pb_evoked = pb_peak - pb_base
+40:             
+41:             # Append to our list
+42:             quantified_results.append({
+43:                 'Block': block_id,
+44:                 'n_triggers': n_val,
+45:                 'N_samples': n_samples,
+46:                 
+47:                 'TR_Base_Mean': np.mean(tr_base),
+48:                 'TR_Base_SEM': np.std(tr_base) / np.sqrt(n_samples),
+49:                 'TR_Peak_Mean': np.mean(tr_peak),
+50:                 'TR_Peak_SEM': np.std(tr_peak) / np.sqrt(n_samples),
+51:                 'TR_Evoked_Mean': np.mean(tr_evoked),
+52:                 'TR_Evoked_SEM': np.std(tr_evoked) / np.sqrt(n_samples),
+53:                 
+54:                 'PB_Base_Mean': np.mean(pb_base),
+55:                 'PB_Base_SEM': np.std(pb_base) / np.sqrt(n_samples),
+56:                 'PB_Peak_Mean': np.mean(pb_peak),
+57:                 'PB_Peak_SEM': np.std(pb_peak) / np.sqrt(n_samples),
+58:                 'PB_Evoked_Mean': np.mean(pb_evoked),
+59:                 'PB_Evoked_SEM': np.std(pb_evoked) / np.sqrt(n_samples)
+60:             })
+61: 
+62: # Convert to DataFrame
+63: df_quantified = pd.DataFrame(quantified_results)
+64: 
+65: # Display the top rows
+66: display(df_quantified.head(10))
+--- Cell 45 ---
+1: import matplotlib.pyplot as plt
+2: import numpy as np
+3: 
+4: # Get unique blocks and sort them to ensure chronological order
+5: unique_blocks = sorted(df_quantified['Block'].unique())
+6: n_blocks = len(unique_blocks)
+7: 
+8: # Updated Titles for Z-Scored Metrics
+9: metrics_to_plot = [
+10:     ('Base', 'Baseline FR\n(-0.2s to 0s)'),
+11:     ('Peak', 'Peak Response\nFR'),
+12:     ('Evoked', 'Evoked FR\n(Peak - Base)')
+13: ]
+14: 
+15: # Create a figure: rows = 3 metrics, cols = n_blocks
+16: fig, axes = plt.subplots(3, n_blocks, figsize=(4 * n_blocks, 10), sharex=0, sharey='row')
+17: 
+18: # Safety check: ensure axes is a 2D array even if there is only 1 block
+19: if n_blocks == 1:
+20:     axes = np.expand_dims(axes, axis=1)
+21: 
+22: for col_idx, block in enumerate(unique_blocks):
+23:     # Filter data for the current block and sort by trigger quantity
+24:     df_block = df_quantified[df_quantified['Block'] == block].sort_values('n_triggers')
+25:     x_vals = df_block['n_triggers'].values
+26:     
+27:     for row_idx, (metric_prefix, metric_title) in enumerate(metrics_to_plot):
+28:         ax = axes[row_idx, col_idx]
+29:         
+30:         # Extract Tracking data
+31:         tr_mean = df_block[f'TR_{metric_prefix}_Mean'].values
+32:         tr_sem = df_block[f'TR_{metric_prefix}_SEM'].values
+33:         
+34:         # Extract Playback data
+35:         pb_mean = df_block[f'PB_{metric_prefix}_Mean'].values
+36:         pb_sem = df_block[f'PB_{metric_prefix}_SEM'].values
+37:         
+38:         # Plot Tracking (Red)
+39:         ax.errorbar(x_vals, tr_mean, yerr=tr_sem, color='red', marker='o', 
+40:                     linewidth=2.5, markersize=6, label='Tracking', capsize=4)
+41:         
+42:         # Plot Playback (Black)
+43:         ax.errorbar(x_vals, pb_mean, yerr=pb_sem, color='black', marker='o', 
+44:                     linewidth=2.5, markersize=6, label='Playback', capsize=4)
+45:         
+46:         # Formatting
+47:         ax.set_xscale('log', base=2)
+48:         ax.set_xticks(x_vals)
+49:         ax.set_xticklabels(x_vals, rotation=45)
+50:         ax.grid(True, alpha=0.3)
+51:         
+52:         # Setup titles and labels dynamically based on grid position
+53:         if row_idx == 0:
+54:             # Top row gets the Block titles
+55:             ax.set_title(f'Block {block}', fontsize=14, fontweight='bold')
+56:             
+57:         if col_idx == 0:
+58:             # First column gets the Metric Y-axis labels
+59:             ax.set_ylabel(metric_title, fontsize=12, fontweight='bold')
+60:             
+61:         if row_idx == 2:
+62:             # Bottom row gets the X-axis labels
+63:             ax.set_xlabel('Number of Triggers (Log Scale)', fontsize=12)
+64:             
+65:         # Add legend only to the top right plot to avoid clutter
+66:         if row_idx == 0 and col_idx == n_blocks - 1:
+67:             ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), frameon=False, fontsize=12)
+68: 
+69: # Updated Main Title
+70: plt.suptitle('#Metrics Evolution: Blocks (Columns) vs Metrics (Rows)', fontsize=18, y=1.05)
+71: plt.tight_layout()
+72: plt.show()
+--- Cell 47 ---
+1: import pandas as pd
+2: import numpy as np
+3: 
+4: # Define time windows based on your dt
+5: baseline_bins = int(0.2 / dt)
+6: idx_base_start = n_bins_pre - baseline_bins
+7: idx_base_end = n_bins_pre  # Event trigger (time 0)
+8: idx_peak_start = n_bins_pre
+9: idx_peak_end = n_bins_pre + int(t_post / dt)
+10: 
+11: raw_results = []
+12: 
+13: # Loop through the data_collection
+14: for block_id, nt_dict in sorted(data_collection.items()):
+15:     
+16:     for n_val, trials_data in nt_dict.items():
+17:         tr_list = trials_data['tr']
+18:         pb_list = trials_data['pb']
+19:         
+20:         # Only process if both conditions have data for this 'n_val'
+21:         if len(tr_list) > 0 and len(pb_list) > 0:
+22:             tracking_arr = np.vstack(tr_list)
+23:             playback_arr = np.vstack(pb_list)
+24:             
+25:             # ==========================================
+26:             # --- Z-SCORE TRANSFORMATION PER SAMPLE ---
+27:             # ==========================================
+28:             tr_mean_time = np.mean(tracking_arr, axis=1, keepdims=True)
+29:             tr_std_time = np.std(tracking_arr, axis=1, keepdims=True) + 1e-8
+30:             tracking_z = (tracking_arr - tr_mean_time) / tr_std_time
+31:             
+32:             pb_mean_time = np.mean(playback_arr, axis=1, keepdims=True)
+33:             pb_std_time = np.std(playback_arr, axis=1, keepdims=True) + 1e-8
+34:             playback_z = (playback_arr - pb_mean_time) / pb_std_time
+35:             
+36:             # ==========================================
+37:             # --- CALCULATE METRICS PER SAMPLE ---
+38:             # ==========================================
+39:             # Notice we are NO LONGER taking np.mean() over axis=0.
+40:             # These are now arrays of shape (n_samples,)
+41:             tr_base = np.mean(tracking_z[:, idx_base_start:idx_base_end], axis=1)
+42:             tr_peak = np.max(tracking_z[:, idx_peak_start:idx_peak_end], axis=1)
+43:             tr_evoked = tr_peak - tr_base
+44:             
+45:             pb_base = np.mean(playback_z[:, idx_base_start:idx_base_end], axis=1)
+46:             pb_peak = np.max(playback_z[:, idx_peak_start:idx_peak_end], axis=1)
+47:             pb_evoked = pb_peak - pb_base
+48:             
+49:             # --- Store individual samples for Tracking ---
+50:             df_tr = pd.DataFrame({
+51:                 'Block': block_id,
+52:                 'n_triggers': n_val,
+53:                 'Condition': 'Tracking',
+54:                 'Base_Z': tr_base,
+55:                 'Peak_Z': tr_peak,
+56:                 'Evoked_Z': tr_evoked
+57:             })
+58:             
+59:             # --- Store individual samples for Playback ---
+60:             df_pb = pd.DataFrame({
+61:                 'Block': block_id,
+62:                 'n_triggers': n_val,
+63:                 'Condition': 'Playback',
+64:                 'Base_Z': pb_base,
+65:                 'Peak_Z': pb_peak,
+66:                 'Evoked_Z': pb_evoked
+67:             })
+68:             
+69:             # Add to master list
+70:             raw_results.extend([df_tr, df_pb])
+71: 
+72: # Combine into a single long-format DataFrame!
+73: df_raw = pd.concat(raw_results, ignore_index=True)
+74: 
+75: # Display a preview
+76: display(df_raw.head())
+--- Cell 48 ---
+1: import matplotlib.pyplot as plt
+2: import seaborn as sns
+3: import numpy as np
+4: 
+5: # 1. Setup Data for Plotting
+6: # Exclude Block 0 and pick the max_triggers for a clean block-to-block comparison
+7: df_plot = df_raw[df_raw['Block'] != 0.0].copy()
+8: max_trig = df_plot['n_triggers'].max()
+9: df_plot = df_plot[df_plot['n_triggers'] == max_trig]
+10: 
+11: metrics = [
+12:     ('Base_Z', 'Baseline Z-Score\n(-0.2s to 0s)'),
+13:     ('Peak_Z', 'Peak Response\nZ-Score'),
+14:     ('Evoked_Z', 'Evoked Z-Score\n(Peak - Base)')
+15: ]
+16: 
+17: # 2. Create Plot
+18: fig, axes = plt.subplots(3, 1, figsize=(10, 14), sharex=0)
+19: 
+20: # Get sorted unique blocks so our x-indices match Seaborn's internal plotting order
+21: unique_blocks = sorted(df_plot['Block'].unique())
+22: 
+23: for i, (col_name, title) in enumerate(metrics):
+24:     ax = axes[i]
+25:     
+26:     # A. Draw the Box Plot (IQR, medians, and outliers)
+27:     sns.boxplot(
+28:         data=df_plot, x='Block', y=col_name, hue='Condition',
+29:         palette={'Tracking': '#ff9999', 'Playback': '#b3b3b3'}, 
+30:         ax=ax, width=0.6, fliersize=4,
+31:         boxprops=dict(alpha=0.7)
+32:     )
+33:     
+34:     # B. Add Sample Size (N) Text above each box
+35:     # Grab current y-limits and expand the top by 10% to fit the text
+36:     y_min, y_max = ax.get_ylim()
+37:     y_range = y_max - y_min
+38:     ax.set_ylim(y_min, y_max + y_range * 0.1)
+39:     
+40:     for x_idx, block in enumerate(unique_blocks):
+41:         # -- Tracking Text --
+42:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')]
+43:         if not tr_data.empty:
+44:             n_tr = len(tr_data)
+45:             # Find the max value (outlier or top whisker) to place text right above it
+46:             y_pos_tr = tr_data[col_name].max() + (y_range * 0.02)
+47:             # -0.2 x-offset aligns with Seaborn's left-shifted 'hue' box
+48:             ax.text(x_idx - 0.2, y_pos_tr, f'n={n_tr}', ha='center', va='bottom', 
+49:                     fontsize=9, color='darkred', fontweight='bold')
+50:             
+51:         # -- Playback Text --
+52:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')]
+53:         if not pb_data.empty:
+54:             n_pb = len(pb_data)
+55:             y_pos_pb = pb_data[col_name].max() + (y_range * 0.02)
+56:             # +0.2 x-offset aligns with Seaborn's right-shifted 'hue' box
+57:             ax.text(x_idx + 0.2, y_pos_pb, f'n={n_pb}', ha='center', va='bottom', 
+58:                     fontsize=9, color='black', fontweight='bold')
+59: 
+60:     # C. Formatting
+61:     ax.set_ylabel(title, fontsize=12, fontweight='bold')
+62:     ax.grid(True, axis='y', linestyle=':', alpha=0.7)
+63:     
+64:     # Manage legends
+65:     if i == 0:
+66:         ax.set_title(f'Tracking-Playback Transition Across Blocks (n_triggers={max_trig})', 
+67:                      fontsize=15, fontweight='bold', pad=20)
+68:         ax.legend(loc='upper right', frameon=True, fontsize=11)
+69:     else:
+70:         # Remove legends from subsequent plots to keep it clean
+71:         ax.legend().set_visible(False)
+72: 
+73: axes[-1].set_xlabel('Block Number', fontsize=14, fontweight='bold')
+74: plt.tight_layout()
+75: plt.show()
+--- Cell 50 ---
+1: import statsmodels.api as sm
+2: from statsmodels.formula.api import ols
+3: 
+4: # 1. Prepare the data (Filter for specific trigger count and exclude Block 0)
+5: max_trig = df_raw['n_triggers'].max()
+6: df_stats = df_raw[(df_raw['Block'] != 0.0) & (df_raw['n_triggers'] == max_trig)].copy()
+7: 
+8: # 2. Define the model formula
+9: # Peak_Z is predicted by Condition, Block, and their interaction (Condition:Block)
+10: # C() tells statsmodels to treat the variable as categorical
+11: formula = 'Peak_Z ~ C(Condition) + C(Block) + C(Condition):C(Block)'
+12: 
+13: # 3. Fit the model and calculate the ANOVA table
+14: model = ols(formula, data=df_stats).fit()
+15: anova_table = sm.stats.anova_lm(model, typ=2)
+16: 
+17: # Display the results
+18: display(anova_table)
+--- Cell 51 ---
+1: import pandas as pd
+2: from scipy.stats import ttest_ind
+3: from statsmodels.stats.multitest import multipletests
+4: 
+5: # We will store the results here
+6: posthoc_results = []
+7: p_values = []
+8: 
+9: # Get the unique blocks from your statistics dataframe
+10: blocks = sorted(df_stats['Block'].unique())
+11: 
+12: for block in blocks:
+13:     # Isolate data for this specific block
+14:     tr_data = df_stats[(df_stats['Block'] == block) & (df_stats['Condition'] == 'Tracking')]['Peak_Z']
+15:     pb_data = df_stats[(df_stats['Block'] == block) & (df_stats['Condition'] == 'Playback')]['Peak_Z']
+16:     
+17:     # Run Welch's t-test (equal_var=False is generally safer for neuroscience data)
+18:     stat, p_val = ttest_ind(tr_data, pb_data, equal_var=False, nan_policy='omit')
+19:     
+20:     p_values.append(p_val)
+21:     posthoc_results.append({
+22:         'Block': block,
+23:         'Tracking_N': len(tr_data),
+24:         'Playback_N': len(pb_data),
+25:         't_stat': stat,
+26:         'raw_p_value': p_val
+27:     })
+28: 
+29: # Apply FDR (False Discovery Rate) correction to the p-values
+30: _, p_adjusted, _, _ = multipletests(p_values, alpha=0.05, method='fdr_bh')
+31: 
+32: # Add the adjusted p-values and significance markers to our results
+33: for i, res in enumerate(posthoc_results):
+34:     res['adj_p_value'] = p_adjusted[i]
+35:     
+36:     # Determine the star rating for the plot later
+37:     if res['adj_p_value'] < 0.001:
+38:         res['Significance'] = '***'
+39:     elif res['adj_p_value'] < 0.01:
+40:         res['Significance'] = '**'
+41:     elif res['adj_p_value'] < 0.05:
+42:         res['Significance'] = '*'
+43:     else:
+44:         res['Significance'] = 'ns'
+45: 
+46: df_posthoc = pd.DataFrame(posthoc_results)
+47: display(df_posthoc)
+--- Cell 52 ---
+1: import matplotlib.pyplot as plt
+2: import seaborn as sns
+3: import numpy as np
+4: 
+5: # 1. Setup Data
+6: df_plot = df_raw[(df_raw['Block'] != 0.0) & (df_raw['n_triggers'] == df_raw['n_triggers'].max())].copy()
+7: unique_blocks = sorted(df_plot['Block'].unique())
+8: 
+9: # 2. Create Figure for Peak_Z
+10: fig, ax = plt.subplots(figsize=(10, 6))
+11: 
+12: # A. Draw the Box Plot
+13: sns.boxplot(
+14:     data=df_plot, x='Block', y='Peak_Z', hue='Condition',
+15:     palette={'Tracking': '#ff9999', 'Playback': '#b3b3b3'}, 
+16:     ax=ax, width=0.6, fliersize=4, boxprops=dict(alpha=0.7)
+17: )
+18: 
+19: # B. Add Sample Sizes (N) and Statistical Brackets
+20: y_min, y_max = ax.get_ylim()
+21: y_range = y_max - y_min
+22: ax.set_ylim(y_min, y_max + y_range * 0.15) # Add 15% headroom for brackets and text
+23: 
+24: for x_idx, block in enumerate(unique_blocks):
+25:     
+26:     # -- 1. Calculate heights for N labels --
+27:     tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')]['Peak_Z']
+28:     pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')]['Peak_Z']
+29:     
+30:     y_pos_tr = tr_data.max() + (y_range * 0.02)
+31:     y_pos_pb = pb_data.max() + (y_range * 0.02)
+32:     
+33:     # Add N text
+34:     ax.text(x_idx - 0.2, y_pos_tr, f'n={len(tr_data)}', ha='center', va='bottom', fontsize=9, color='darkred')
+35:     ax.text(x_idx + 0.2, y_pos_pb, f'n={len(pb_data)}', ha='center', va='bottom', fontsize=9, color='black')
+36: 
+37:     # -- 2. Draw Statistical Brackets --
+38:     # Get the significance marker from your df_posthoc dataframe
+39:     sig = df_posthoc.loc[df_posthoc['Block'] == block, 'Significance'].values[0]
+40:     
+41:     if sig != 'ns':
+42:         # Find the highest point between both boxes to place the bracket above them
+43:         bracket_y = max(y_pos_tr, y_pos_pb) + (y_range * 0.06)
+44:         bracket_tip = y_range * 0.02
+45:         
+46:         x1, x2 = x_idx - 0.2, x_idx + 0.2 # Centers of the two boxes
+47:         
+48:         # Draw the horizontal line and vertical downward tips
+49:         ax.plot([x1, x1, x2, x2], [bracket_y - bracket_tip, bracket_y, bracket_y, bracket_y - bracket_tip], lw=1.5, c='k')
+50:         
+51:         # Add the stars (* or ***) precisely in the middle of the bracket
+52:         ax.text((x1 + x2) * 0.5, bracket_y, sig, ha='center', va='bottom', color='k', fontsize=14, fontweight='bold')
+53: 
+54: # C. Formatting
+55: ax.set_ylabel('Peak Response\nZ-Score', fontsize=12, fontweight='bold')
+56: ax.set_xlabel('Block Number', fontsize=14, fontweight='bold')
+57: ax.set_title('Peak_Z: Tracking vs Playback within Blocks', fontsize=15, fontweight='bold', pad=20)
+58: ax.grid(True, axis='y', linestyle=':', alpha=0.7)
+59: ax.legend(loc='upper left', frameon=True, fontsize=11)
+60: 
+61: plt.tight_layout()
+62: plt.show()
+--- Cell 55 ---
+1: import numpy as np
+2: import pandas as pd
+3: import matplotlib.pyplot as plt
+4: import seaborn as sns
+5: from scipy.stats import ttest_ind
+6: from statsmodels.stats.multitest import multipletests
+7: 
+8: # ==========================================================
+9: # 1. PARAMETERS & INITIALIZATION
+10: # ==========================================================
+11: t_pre = 0.3   
+12: t_post = 0.3  
+13: 
+14: # Generate n values: 2^0 to 2^8 [1, 2, 4, 8, 16, 32, 64, 128, 256]
+15: n_values = [2**i for i in range(9)]
+16: 
+17: # Clean Condition -1.0
+18: for f_data in f_data_s:
+19:     mask = (f_data['Condition'] == -1.0)
+20:     f_data.loc[mask, 'Frequency_changes'] = False
+21: 
+22: data_collection = {}
+23: 
+24: # ==========================================================
+25: # 2. DATA EXTRACTION
+26: # ==========================================================
+27: for n_val in n_values:
+28:     for n_data, f_data in zip(n_data_s, f_data_s):
+29:         # Using your existing functions (ensure they are defined above in your notebook)
+30:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_val)
+31:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_val)
+32: 
+33:         # Blocks with BOTH Tracking and Playback, excluding Block 0
+34:         valid_blocks = sorted([b for b in f_data['Block'].unique() if b in dict_tr and b in dict_pb and b != 0])
+35:         
+36:         for actual_b in valid_blocks:
+37:             if actual_b not in data_collection:
+38:                 data_collection[actual_b] = {n: {'tr': [], 'pb': []} for n in n_values}
+39:             
+40:             data_collection[actual_b][n_val]['tr'].append(dict_tr[actual_b])
+41:             data_collection[actual_b][n_val]['pb'].append(dict_pb[actual_b])
+42: 
+43: # ==========================================================
+44: # 3. Z-SCORING & METRICS COMPUTATION
+45: # ==========================================================
+46: baseline_bins = int(0.2 / dt)
+47: n_bins_pre = int(t_pre / dt)
+48: idx_base_start = n_bins_pre - baseline_bins
+49: idx_base_end = n_bins_pre
+50: idx_peak_start = n_bins_pre
+51: idx_peak_end = n_bins_pre + int(t_post / dt)
+52: 
+53: raw_results = []
+54: 
+55: for block_id, nt_dict in sorted(data_collection.items()):
+56:     for n_val, trials_data in nt_dict.items():
+57:         tr_list = trials_data['tr']
+58:         pb_list = trials_data['pb']
+59:         
+60:         if len(tr_list) > 0 and len(pb_list) > 0:
+61:             tracking_arr = np.vstack(tr_list)
+62:             playback_arr = np.vstack(pb_list)
+63:             
+64:             # Z-Score Tracking
+65:             tr_mean_time = np.mean(tracking_arr, axis=1, keepdims=True)
+66:             tr_std_time = np.std(tracking_arr, axis=1, keepdims=True) + 1e-8
+67:             tracking_z = (tracking_arr - tr_mean_time) / tr_std_time
+68:             
+69:             # Z-Score Playback
+70:             pb_mean_time = np.mean(playback_arr, axis=1, keepdims=True)
+71:             pb_std_time = np.std(playback_arr, axis=1, keepdims=True) + 1e-8
+72:             playback_z = (playback_arr - pb_mean_time) / pb_std_time
+73:             
+74:             # Extract Metrics
+75:             tr_base = np.mean(tracking_z[:, idx_base_start:idx_base_end], axis=1)
+76:             tr_peak = np.max(tracking_z[:, idx_peak_start:idx_peak_end], axis=1)
+77:             tr_evoked = tr_peak - tr_base
+78:             
+79:             pb_base = np.mean(playback_z[:, idx_base_start:idx_base_end], axis=1)
+80:             pb_peak = np.max(playback_z[:, idx_peak_start:idx_peak_end], axis=1)
+81:             pb_evoked = pb_peak - pb_base
+82:             
+83:             df_tr = pd.DataFrame({'Block': block_id, 'n_triggers': n_val, 'Condition': 'Tracking', 
+84:                                   'Base_Z': tr_base, 'Peak_Z': tr_peak, 'Evoked_Z': tr_evoked})
+85:             df_pb = pd.DataFrame({'Block': block_id, 'n_triggers': n_val, 'Condition': 'Playback', 
+86:                                   'Base_Z': pb_base, 'Peak_Z': pb_peak, 'Evoked_Z': pb_evoked})
+87:             
+88:             raw_results.extend([df_tr, df_pb])
+89: 
+90: df_raw = pd.concat(raw_results, ignore_index=True)
+91: print("Data extraction and Z-scoring complete!")
+--- Cell 57 ---
+1: # ==========================================================
+2: # AUTOMATED PLOTTING & STATISTICS LOOP
+3: # ==========================================================
+4: 
+5: for n_val in n_values:
+6:     # 1. Filter data for the current n_val
+7:     df_plot = df_raw[df_raw['n_triggers'] == n_val].copy()
+8:     
+9:     # Skip if there's no data for this n_val
+10:     if df_plot.empty:
+11:         continue
+12:         
+13:     unique_blocks = sorted(df_plot['Block'].unique())
+14:     
+15:     # 2. Run Statistics (T-test per block)
+16:     posthoc_results = []
+17:     p_values = []
+18:     
+19:     for block in unique_blocks:
+20:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')]['Peak_Z']
+21:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')]['Peak_Z']
+22:         
+23:         # Only run test if there is enough data
+24:         if len(tr_data) > 1 and len(pb_data) > 1:
+25:             stat, p_val = ttest_ind(tr_data, pb_data, equal_var=False, nan_policy='omit')
+26:         else:
+27:             p_val = np.nan
+28:             
+29:         p_values.append(p_val)
+30:         posthoc_results.append({'Block': block, 'p_val': p_val})
+31:         
+32:     # 3. Apply FDR Correction
+33:     valid_p = [p for p in p_values if not np.isnan(p)]
+34:     if valid_p:
+35:         _, p_adj_valid, _, _ = multipletests(valid_p, alpha=0.05, method='fdr_bh')
+36:     else:
+37:         p_adj_valid = []
+38:         
+39:     # Re-map adjusted p-values and determine star ratings
+40:     adj_idx = 0
+41:     sig_markers = {}
+42:     for res in posthoc_results:
+43:         if np.isnan(res['p_val']):
+44:             sig_markers[res['Block']] = 'ns'
+45:         else:
+46:             adj_p = p_adj_valid[adj_idx]
+47:             adj_idx += 1
+48:             if adj_p < 0.001: sig_markers[res['Block']] = '***'
+49:             elif adj_p < 0.01: sig_markers[res['Block']] = '**'
+50:             elif adj_p < 0.05: sig_markers[res['Block']] = '*'
+51:             else: sig_markers[res['Block']] = 'ns'
+52: 
+53:     # 4. Generate Plot
+54:     fig, ax = plt.subplots(figsize=(10, 5))
+55:     
+56:     sns.boxplot(
+57:         data=df_plot, x='Block', y='Peak_Z', hue='Condition',
+58:         palette={'Tracking': '#ff9999', 'Playback': '#b3b3b3'}, 
+59:         ax=ax, width=0.6, fliersize=4, boxprops=dict(alpha=0.7)
+60:     )
+61:     
+62:     # Scale Y-axis to fit annotations
+63:     y_min, y_max = ax.get_ylim()
+64:     y_range = y_max - y_min
+65:     ax.set_ylim(y_min, y_max + y_range * 0.20) # 20% headroom
+66:     
+67:     # 5. Add N-counts and Stat Brackets
+68:     for x_idx, block in enumerate(unique_blocks):
+69:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')]['Peak_Z']
+70:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')]['Peak_Z']
+71:         
+72:         # Heights for 'n' text
+73:         y_pos_tr = tr_data.max() + (y_range * 0.02) if not tr_data.empty else y_min
+74:         y_pos_pb = pb_data.max() + (y_range * 0.02) if not pb_data.empty else y_min
+75:         
+76:         ax.text(x_idx - 0.2, y_pos_tr, f'n={len(tr_data)}', ha='center', va='bottom', fontsize=9, color='darkred')
+77:         ax.text(x_idx + 0.2, y_pos_pb, f'n={len(pb_data)}', ha='center', va='bottom', fontsize=9, color='black')
+78: 
+79:         # Bracket placement
+80:         sig = sig_markers.get(block, 'ns')
+81:         if sig != 'ns' and not tr_data.empty and not pb_data.empty:
+82:             bracket_y = max(y_pos_tr, y_pos_pb) + (y_range * 0.08)
+83:             bracket_tip = y_range * 0.02
+84:             x1, x2 = x_idx - 0.2, x_idx + 0.2 
+85:             
+86:             ax.plot([x1, x1, x2, x2], [bracket_y - bracket_tip, bracket_y, bracket_y, bracket_y - bracket_tip], lw=1.5, c='k')
+87:             ax.text((x1 + x2) * 0.5, bracket_y, sig, ha='center', va='bottom', color='k', fontsize=14, fontweight='bold')
+88: 
+89:     # 6. Formatting
+90:     ax.set_ylabel('Peak Response Z-Score', fontsize=12, fontweight='bold')
+91:     ax.set_xlabel('Block Number', fontsize=14, fontweight='bold')
+92:     ax.set_title(f'Peak_Z: Tracking vs Playback (n_triggers = {n_val})', fontsize=15, fontweight='bold', pad=15)
+93:     ax.grid(True, axis='y', linestyle=':', alpha=0.7)
+94:     
+95:     # Adjust legend
+96:     ax.legend(loc='upper left', frameon=True, fontsize=11)
+97:     
+98:     plt.tight_layout()
+99:     plt.show()
+--- Cell 59 ---
+1: import numpy as np
+2: import pandas as pd
+3: import matplotlib.pyplot as plt
+4: import seaborn as sns
+5: from scipy.stats import ttest_rel
+6: from statsmodels.stats.multitest import multipletests
+7: from IPython.display import display
+8: 
+9: # ==========================================================
+10: # 1. PARAMETERS & DATA SANITIZATION
+11: # ==========================================================
+12: t_pre = 0.3   
+13: t_post = 0.3  
+14: 
+15: # Generate n values: 1, 2, 4, 8, 16, 32, 64, 128, 256
+16: n_values = [2**i for i in range(9)]
+17: 
+18: # Safely sanitize Condition -1.0
+19: for f_data in f_data_s:
+20:     mask = (f_data['Condition'] == -1.0)
+21:     f_data.loc[mask, 'Frequency_changes'] = False
+22: 
+23: # ==========================================================
+24: # 2. DATA EXTRACTION & PAIRED Z-SCORING
+25: # ==========================================================
+26: data_collection = {}
+27: 
+28: for n_val in n_values:
+29:     for n_data, f_data in zip(n_data_s, f_data_s):
+30:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_val)
+31:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_val)
+32: 
+33:         # Blocks with BOTH Tracking and Playback, excluding Block 0
+34:         valid_blocks = sorted([b for b in f_data['Block'].unique() if b in dict_tr and b in dict_pb and b != 0])
+35:         
+36:         for actual_b in valid_blocks:
+37:             if actual_b not in data_collection:
+38:                 data_collection[actual_b] = {n: {'tr': [], 'pb': []} for n in n_values}
+39:             
+40:             data_collection[actual_b][n_val]['tr'].append(dict_tr[actual_b])
+41:             data_collection[actual_b][n_val]['pb'].append(dict_pb[actual_b])
+42: 
+43: baseline_bins = int(0.2 / dt)
+44: n_bins_pre = int(t_pre / dt)
+45: idx_base_start = n_bins_pre - baseline_bins
+46: idx_base_end = n_bins_pre
+47: idx_peak_start = n_bins_pre
+48: idx_peak_end = n_bins_pre + int(t_post / dt)
+49: 
+50: raw_results = []
+51: 
+52: for block_id, nt_dict in sorted(data_collection.items()):
+53:     for n_val, trials_data in nt_dict.items():
+54:         tr_list = trials_data['tr']
+55:         pb_list = trials_data['pb']
+56:         
+57:         if len(tr_list) > 0 and len(pb_list) > 0:
+58:             tracking_arr = np.vstack(tr_list)
+59:             playback_arr = np.vstack(pb_list)
+60:             n_samples = tracking_arr.shape[0]
+61:             
+62:             # Create a shared unique ID
+63:             neuron_uids = np.arange(n_samples)
+64:             
+65:             # Z-Score Tracking
+66:             tr_mean_time = np.mean(tracking_arr, axis=1, keepdims=True)
+67:             tr_std_time = np.std(tracking_arr, axis=1, keepdims=True) + 1e-8
+68:             tracking_z = (tracking_arr - tr_mean_time) / tr_std_time
+69:             
+70:             # Z-Score Playback
+71:             pb_mean_time = np.mean(playback_arr, axis=1, keepdims=True)
+72:             pb_std_time = np.std(playback_arr, axis=1, keepdims=True) + 1e-8
+73:             playback_z = (playback_arr - pb_mean_time) / pb_std_time
+74:             
+75:             # Extract Peak Metrics
+76:             tr_peak = np.max(tracking_z[:, idx_peak_start:idx_peak_end], axis=1)
+77:             pb_peak = np.max(playback_z[:, idx_peak_start:idx_peak_end], axis=1)
+78:             
+79:             # Store Tracking
+80:             df_tr = pd.DataFrame({'Neuron_UID': neuron_uids, 'Block': block_id, 'n_triggers': n_val, 
+81:                                   'Condition': 'Tracking', 'Peak_Z': tr_peak})
+82:             
+83:             # Store Playback
+84:             df_pb = pd.DataFrame({'Neuron_UID': neuron_uids, 'Block': block_id, 'n_triggers': n_val, 
+85:                                   'Condition': 'Playback', 'Peak_Z': pb_peak})
+86:             
+87:             raw_results.extend([df_tr, df_pb])
+88: 
+89: df_raw = pd.concat(raw_results, ignore_index=True)
+90: print("Paired Data Extraction Complete!")
+91: 
+--- Cell 60 ---
+1: import os
+2: import numpy as np
+3: import pandas as pd
+4: import matplotlib.pyplot as plt
+5: import seaborn as sns
+6: from scipy.stats import ttest_rel
+7: from statsmodels.stats.multitest import multipletests
+8: from IPython.display import display
+9: 
+10: # ==========================================================
+11: # 0. SETUP OUTPUT DIRECTORY
+12: # ==========================================================
+13: output_dir = r"C:\Users\PenPen\Desktop\Ferret\Code\Results"
+14: os.makedirs(output_dir, exist_ok=True)
+15: print(f"Outputs will be saved to: {output_dir}")
+16: 
+17: # ==========================================================
+18: # 1. PARAMETERS & DATA SANITIZATION
+19: # ==========================================================
+20: t_pre = 0.3   
+21: t_post = 0.3  
+22: 
+23: # Generate n values: 1, 2, 4, 8, 16, 32, 64, 128, 256
+24: n_values = [2**i for i in range(9)]
+25: 
+26: # Safely sanitize Condition -1.0
+27: for f_data in f_data_s:
+28:     mask = (f_data['Condition'] == -1.0)
+29:     f_data.loc[mask, 'Frequency_changes'] = False
+30: 
+31: 
+32: # ==========================================================
+33: # 3. PAIRED STATS, PLOTTING & TABLE GENERATION
+34: # ==========================================================
+35: master_stats_list = [] # We will store ALL statistical results here
+36: 
+37: for n_val in n_values:
+38:     df_plot = df_raw[df_raw['n_triggers'] == n_val].copy()
+39:     if df_plot.empty:
+40:         continue
+41:         
+42:     unique_blocks = sorted(df_plot['Block'].unique())
+43:     current_n_stats = []
+44:     p_values = []
+45:     
+46:     # Run Paired Stats per Block for this n_val
+47:     for block in unique_blocks:
+48:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')].sort_values('Neuron_UID')['Peak_Z']
+49:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')].sort_values('Neuron_UID')['Peak_Z']
+50:         
+51:         paired_n = len(tr_data)
+52:         
+53:         if paired_n > 1 and len(pb_data) > 1:
+54:             stat, p_val = ttest_rel(tr_data, pb_data, nan_policy='omit')
+55:         else:
+56:             stat, p_val = np.nan, np.nan
+57:             
+58:         p_values.append(p_val)
+59:         
+60:         current_n_stats.append({
+61:             'n_triggers': n_val,
+62:             'Block': block,
+63:             'N_Pairs': paired_n,
+64:             't_stat': stat,
+65:             'raw_p_value': p_val
+66:         })
+67:         
+68:     # Apply FDR Correction across the blocks for this specific n_val
+69:     valid_p = [p for p in p_values if not np.isnan(p)]
+70:     if valid_p:
+71:         _, p_adj_valid, _, _ = multipletests(valid_p, alpha=0.05, method='fdr_bh')
+72:     else:
+73:         p_adj_valid = []
+74:         
+75:     adj_idx = 0
+76:     sig_markers = {}
+77:     
+78:     # Map back the adjusted p-values and assign stars
+79:     for res in current_n_stats:
+80:         if np.isnan(res['raw_p_value']):
+81:             res['adj_p_value'] = np.nan
+82:             res['Significance'] = 'ns'
+83:             sig_markers[res['Block']] = 'ns'
+84:         else:
+85:             adj_p = p_adj_valid[adj_idx]
+86:             res['adj_p_value'] = adj_p
+87:             adj_idx += 1
+88:             
+89:             if adj_p < 0.001: res['Significance'] = '***'
+90:             elif adj_p < 0.01: res['Significance'] = '**'
+91:             elif adj_p < 0.05: res['Significance'] = '*'
+92:             else: res['Significance'] = 'ns'
+93:                 
+94:             sig_markers[res['Block']] = res['Significance']
+95:             
+96:     master_stats_list.extend(current_n_stats)
+97: 
+98:     # Generate the Figure
+99:     fig, ax = plt.subplots(figsize=(10, 5))
+100:     
+101:     sns.boxplot(
+102:         data=df_plot, x='Block', y='Peak_Z', hue='Condition',
+103:         palette={'Tracking': '#ff9999', 'Playback': '#b3b3b3'}, 
+104:         ax=ax, width=0.6, fliersize=4, boxprops=dict(alpha=0.7)
+105:     )
+106:     
+107:     y_min, y_max = ax.get_ylim()
+108:     y_range = y_max - y_min
+109:     ax.set_ylim(y_min, y_max + y_range * 0.20) 
+110:     
+111:     # Annotate N and Significance
+112:     for x_idx, block in enumerate(unique_blocks):
+113:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')]['Peak_Z']
+114:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')]['Peak_Z']
+115:         
+116:         y_pos_tr = tr_data.max() + (y_range * 0.02) if not tr_data.empty else y_min
+117:         y_pos_pb = pb_data.max() + (y_range * 0.02) if not pb_data.empty else y_min
+118:         
+119:         paired_n = len(tr_data)
+120:         ax.text(x_idx, min(y_pos_tr, y_pos_pb) - (y_range * 0.08), f'n={paired_n}', 
+121:                 ha='center', va='top', fontsize=9, color='gray')
+122: 
+123:         sig = sig_markers.get(block, 'ns')
+124:         if sig != 'ns' and not tr_data.empty and not pb_data.empty:
+125:             bracket_y = max(y_pos_tr, y_pos_pb) + (y_range * 0.08)
+126:             bracket_tip = y_range * 0.02
+127:             x1, x2 = x_idx - 0.2, x_idx + 0.2 
+128:             
+129:             ax.plot([x1, x1, x2, x2], [bracket_y - bracket_tip, bracket_y, bracket_y, bracket_y - bracket_tip], lw=1.5, c='k')
+130:             ax.text((x1 + x2) * 0.5, bracket_y, sig, ha='center', va='bottom', color='k', fontsize=14, fontweight='bold')
+131: 
+132:     ax.set_ylabel('Peak Response Z-Score', fontsize=12, fontweight='bold')
+133:     ax.set_xlabel('Block Number', fontsize=14, fontweight='bold')
+134:     ax.set_title(f'Paired Peak_Z: Tracking vs Playback (n_triggers = {n_val})', fontsize=15, fontweight='bold', pad=15)
+135:     ax.grid(True, axis='y', linestyle=':', alpha=0.7)
+136:     
+137:     ax.legend(loc='upper left', frameon=True, fontsize=11)
+138:     
+139:     plt.tight_layout()
+140:     
+141:     # --- SAVE PLOT ---
+142:     fig_filename = os.path.join(output_dir, f'paired_peak_z_n_{n_val}.png')
+143:     plt.savefig(fig_filename, dpi=300, bbox_inches='tight')
+144:     plt.show()
+145: 
+--- Cell 61 ---
+1: # ==========================================================
+2: # 4. SAVE STATS TABLE
+3: # ==========================================================
+4: df_all_stats = pd.DataFrame(master_stats_list)
+5: 
+6: print("\n--- Summary of Paired Statistical Tests (FDR Corrected per n_triggers) ---")
+7: display(df_all_stats)
+8: 
+9: # --- SAVE CSV ---
+10: csv_filename = os.path.join(output_dir, 'paired_stats_summary_n_triggers.csv')
+11: df_all_stats.to_csv(csv_filename, index=False)
+12: print(f"\nAll plots and the statistics CSV have been successfully saved to:\n{output_dir}")
+--- Cell 63 ---
+1: import os
+2: import numpy as np
+3: import pandas as pd
+4: import matplotlib.pyplot as plt
+5: import seaborn as sns
+6: from scipy.stats import ttest_rel
+7: from statsmodels.stats.multitest import multipletests
+8: from IPython.display import display
+9: 
+10: # ==========================================================
+11: # 0. SETUP OUTPUT DIRECTORY
+12: # ==========================================================
+13: output_dir = r"C:\Users\PenPen\Desktop\Ferret\Code\Results"
+14: os.makedirs(output_dir, exist_ok=True)
+15: print(f"Outputs will be saved to: {output_dir}")
+16: 
+17: # ==========================================================
+18: # 1. PARAMETERS & DATA SANITIZATION
+19: # ==========================================================
+20: t_pre = 0.3   
+21: t_post = 0.3  
+22: 
+23: # Generate n values: 1, 2, 4, 8, 16, 32, 64, 128, 256
+24: n_values = [2**i for i in range(9)]
+25: 
+26: # Safely sanitize Condition -1.0
+27: for f_data in f_data_s:
+28:     mask = (f_data['Condition'] == -1.0)
+29:     f_data.loc[mask, 'Frequency_changes'] = False
+30: 
+31: # ==========================================================
+32: # 2. DATA EXTRACTION & PAIRED Z-SCORING (FOCUS ON BASELINE)
+33: # ==========================================================
+34: data_collection = {}
+35: 
+36: for n_val in n_values:
+37:     for n_data, f_data in zip(n_data_s, f_data_s):
+38:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_val)
+39:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_val)
+40: 
+41:         # Blocks with BOTH Tracking and Playback, excluding Block 0
+42:         valid_blocks = sorted([b for b in f_data['Block'].unique() if b in dict_tr and b in dict_pb and b != 0])
+43:         
+44:         for actual_b in valid_blocks:
+45:             if actual_b not in data_collection:
+46:                 data_collection[actual_b] = {n: {'tr': [], 'pb': []} for n in n_values}
+47:             
+48:             data_collection[actual_b][n_val]['tr'].append(dict_tr[actual_b])
+49:             data_collection[actual_b][n_val]['pb'].append(dict_pb[actual_b])
+50: 
+51: baseline_bins = int(0.2 / dt)
+52: n_bins_pre = int(t_pre / dt)
+53: idx_base_start = n_bins_pre - baseline_bins
+54: idx_base_end = n_bins_pre  # Time 0
+55: 
+56: raw_results = []
+57: 
+58: for block_id, nt_dict in sorted(data_collection.items()):
+59:     for n_val, trials_data in nt_dict.items():
+60:         tr_list = trials_data['tr']
+61:         pb_list = trials_data['pb']
+62:         
+63:         if len(tr_list) > 0 and len(pb_list) > 0:
+64:             tracking_arr = np.vstack(tr_list)
+65:             playback_arr = np.vstack(pb_list)
+66:             n_samples = tracking_arr.shape[0]
+67:             
+68:             # Create a shared unique ID
+69:             neuron_uids = np.arange(n_samples)
+70:             
+71:             # Z-Score Tracking
+72:             tr_mean_time = np.mean(tracking_arr, axis=1, keepdims=True)
+73:             tr_std_time = np.std(tracking_arr, axis=1, keepdims=True) + 1e-8
+74:             tracking_z = (tracking_arr - tr_mean_time) / tr_std_time
+75:             
+76:             # Z-Score Playback
+77:             pb_mean_time = np.mean(playback_arr, axis=1, keepdims=True)
+78:             pb_std_time = np.std(playback_arr, axis=1, keepdims=True) + 1e-8
+79:             playback_z = (playback_arr - pb_mean_time) / pb_std_time
+80:             
+81:             # Extract Baseline Metrics (-0.2s to 0s)
+82:             tr_base = np.mean(tracking_z[:, idx_base_start:idx_base_end], axis=1)
+83:             pb_base = np.mean(playback_z[:, idx_base_start:idx_base_end], axis=1)
+84:             
+85:             # Store Tracking (Base_Z)
+86:             df_tr = pd.DataFrame({'Neuron_UID': neuron_uids, 'Block': block_id, 'n_triggers': n_val, 
+87:                                   'Condition': 'Tracking', 'Base_Z': tr_base})
+88:             
+89:             # Store Playback (Base_Z)
+90:             df_pb = pd.DataFrame({'Neuron_UID': neuron_uids, 'Block': block_id, 'n_triggers': n_val, 
+91:                                   'Condition': 'Playback', 'Base_Z': pb_base})
+92:             
+93:             raw_results.extend([df_tr, df_pb])
+94: 
+95: df_raw = pd.concat(raw_results, ignore_index=True)
+96: print("Paired Data Extraction (Baseline) Complete!")
+97: 
+98: # ==========================================================
+99: # 3. PAIRED STATS, PLOTTING & TABLE GENERATION
+100: # ==========================================================
+101: master_stats_list = [] # We will store ALL statistical results here
+102: 
+103: for n_val in n_values:
+104:     df_plot = df_raw[df_raw['n_triggers'] == n_val].copy()
+105:     if df_plot.empty:
+106:         continue
+107:         
+108:     unique_blocks = sorted(df_plot['Block'].unique())
+109:     current_n_stats = []
+110:     p_values = []
+111:     
+112:     # Run Paired Stats per Block for this n_val using Base_Z
+113:     for block in unique_blocks:
+114:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')].sort_values('Neuron_UID')['Base_Z']
+115:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')].sort_values('Neuron_UID')['Base_Z']
+116:         
+117:         paired_n = len(tr_data)
+118:         
+119:         if paired_n > 1 and len(pb_data) > 1:
+120:             stat, p_val = ttest_rel(tr_data, pb_data, nan_policy='omit')
+121:         else:
+122:             stat, p_val = np.nan, np.nan
+123:             
+124:         p_values.append(p_val)
+125:         
+126:         current_n_stats.append({
+127:             'n_triggers': n_val,
+128:             'Block': block,
+129:             'N_Pairs': paired_n,
+130:             't_stat': stat,
+131:             'raw_p_value': p_val
+132:         })
+133:         
+134:     # Apply FDR Correction across the blocks for this specific n_val
+135:     valid_p = [p for p in p_values if not np.isnan(p)]
+136:     if valid_p:
+137:         _, p_adj_valid, _, _ = multipletests(valid_p, alpha=0.05, method='fdr_bh')
+138:     else:
+139:         p_adj_valid = []
+140:         
+141:     adj_idx = 0
+142:     sig_markers = {}
+143:     
+144:     # Map back the adjusted p-values and assign stars
+145:     for res in current_n_stats:
+146:         if np.isnan(res['raw_p_value']):
+147:             res['adj_p_value'] = np.nan
+148:             res['Significance'] = 'ns'
+149:             sig_markers[res['Block']] = 'ns'
+150:         else:
+151:             adj_p = p_adj_valid[adj_idx]
+152:             res['adj_p_value'] = adj_p
+153:             adj_idx += 1
+154:             
+155:             if adj_p < 0.001: res['Significance'] = '***'
+156:             elif adj_p < 0.01: res['Significance'] = '**'
+157:             elif adj_p < 0.05: res['Significance'] = '*'
+158:             else: res['Significance'] = 'ns'
+159:                 
+160:             sig_markers[res['Block']] = res['Significance']
+161:             
+162:     master_stats_list.extend(current_n_stats)
+163: 
+164:     # Generate the Figure
+165:     fig, ax = plt.subplots(figsize=(10, 5))
+166:     
+167:     sns.boxplot(
+168:         data=df_plot, x='Block', y='Base_Z', hue='Condition',
+169:         palette={'Tracking': '#ff9999', 'Playback': '#b3b3b3'}, 
+170:         ax=ax, width=0.6, fliersize=4, boxprops=dict(alpha=0.7)
+171:     )
+172:     
+173:     y_min, y_max = ax.get_ylim()
+174:     y_range = y_max - y_min
+175:     ax.set_ylim(y_min, y_max + y_range * 0.20) 
+176:     
+177:     # Annotate N and Significance
+178:     for x_idx, block in enumerate(unique_blocks):
+179:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')]['Base_Z']
+180:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')]['Base_Z']
+181:         
+182:         y_pos_tr = tr_data.max() + (y_range * 0.02) if not tr_data.empty else y_min
+183:         y_pos_pb = pb_data.max() + (y_range * 0.02) if not pb_data.empty else y_min
+184:         
+185:         paired_n = len(tr_data)
+186:         ax.text(x_idx, min(y_pos_tr, y_pos_pb) - (y_range * 0.08), f'n={paired_n}', 
+187:                 ha='center', va='top', fontsize=9, color='gray')
+188: 
+189:         sig = sig_markers.get(block, 'ns')
+190:         if sig != 'ns' and not tr_data.empty and not pb_data.empty:
+191:             bracket_y = max(y_pos_tr, y_pos_pb) + (y_range * 0.08)
+192:             bracket_tip = y_range * 0.02
+193:             x1, x2 = x_idx - 0.2, x_idx + 0.2 
+194:             
+195:             ax.plot([x1, x1, x2, x2], [bracket_y - bracket_tip, bracket_y, bracket_y, bracket_y - bracket_tip], lw=1.5, c='k')
+196:             ax.text((x1 + x2) * 0.5, bracket_y, sig, ha='center', va='bottom', color='k', fontsize=14, fontweight='bold')
+197: 
+198:     ax.set_ylabel('Baseline Z-Score', fontsize=12, fontweight='bold')
+199:     ax.set_xlabel('Block Number', fontsize=14, fontweight='bold')
+200:     ax.set_title(f'Paired Base_Z: Tracking vs Playback (n_triggers = {n_val})', fontsize=15, fontweight='bold', pad=15)
+201:     ax.grid(True, axis='y', linestyle=':', alpha=0.7)
+202:     
+203:     ax.legend(loc='upper left', frameon=True, fontsize=11)
+204:     
+205:     plt.tight_layout()
+206:     
+207:     # --- SAVE PLOT ---
+208:     fig_filename = os.path.join(output_dir, f'paired_base_z_n_{n_val}.png')
+209:     plt.savefig(fig_filename, dpi=300, bbox_inches='tight')
+210:     plt.show()
+211: 
+212: # ==========================================================
+213: # 4. SAVE STATS TABLE
+214: # ==========================================================
+215: df_all_stats_base = pd.DataFrame(master_stats_list)
+216: 
+217: print("\n--- Summary of Paired Statistical Tests (BASELINE - FDR Corrected) ---")
+218: display(df_all_stats_base)
+219: 
+220: # --- SAVE CSV ---
+221: csv_filename = os.path.join(output_dir, 'paired_base_stats_summary_n_triggers.csv')
+222: df_all_stats_base.to_csv(csv_filename, index=False)
+223: print(f"\nAll baseline plots and the statistics CSV have been successfully saved to:\n{output_dir}")
+--- Cell 65 ---
+1: import os
+2: import numpy as np
+3: import pandas as pd
+4: import matplotlib.pyplot as plt
+5: import seaborn as sns
+6: from scipy.stats import ttest_rel
+7: from statsmodels.stats.multitest import multipletests
+8: from IPython.display import display
+9: 
+10: # ==========================================================
+11: # 0. SETUP OUTPUT DIRECTORY
+12: # ==========================================================
+13: output_dir = r"C:\Users\PenPen\Desktop\Ferret\Code\Results"
+14: os.makedirs(output_dir, exist_ok=True)
+15: print(f"Outputs will be saved to: {output_dir}")
+16: 
+17: # ==========================================================
+18: # 1. PARAMETERS & DATA SANITIZATION
+19: # ==========================================================
+20: t_pre = 0.3   
+21: t_post = 0.3  
+22: 
+23: # Generate n values: 1, 2, 4, 8, 16, 32, 64, 128, 256
+24: n_values = [2**i for i in range(9)]
+25: 
+26: # Safely sanitize Condition -1.0
+27: for f_data in f_data_s:
+28:     mask = (f_data['Condition'] == -1.0)
+29:     f_data.loc[mask, 'Frequency_changes'] = False
+30: 
+31: # ==========================================================
+32: # 2. DATA EXTRACTION & PAIRED Z-SCORING (EVOKED RESPONSE)
+33: # ==========================================================
+34: data_collection = {}
+35: 
+36: for n_val in n_values:
+37:     for n_data, f_data in zip(n_data_s, f_data_s):
+38:         dict_tr, psth_bins = get_psth_last_n_triggers_tracking(n_data, f_data, t_pre, t_post, dt, n_last=n_val)
+39:         dict_pb, _ = get_psth_first_n_triggers_playback(n_data, f_data, t_pre, t_post, dt, n_first=n_val)
+40: 
+41:         # Blocks with BOTH Tracking and Playback, excluding Block 0
+42:         valid_blocks = sorted([b for b in f_data['Block'].unique() if b in dict_tr and b in dict_pb and b != 0])
+43:         
+44:         for actual_b in valid_blocks:
+45:             if actual_b not in data_collection:
+46:                 data_collection[actual_b] = {n: {'tr': [], 'pb': []} for n in n_values}
+47:             
+48:             data_collection[actual_b][n_val]['tr'].append(dict_tr[actual_b])
+49:             data_collection[actual_b][n_val]['pb'].append(dict_pb[actual_b])
+50: 
+51: baseline_bins = int(0.2 / dt)
+52: n_bins_pre = int(t_pre / dt)
+53: idx_base_start = n_bins_pre - baseline_bins
+54: idx_base_end = n_bins_pre  # Time 0
+55: idx_peak_start = n_bins_pre
+56: idx_peak_end = n_bins_pre + int(t_post / dt)
+57: 
+58: raw_results = []
+59: 
+60: for block_id, nt_dict in sorted(data_collection.items()):
+61:     for n_val, trials_data in nt_dict.items():
+62:         tr_list = trials_data['tr']
+63:         pb_list = trials_data['pb']
+64:         
+65:         if len(tr_list) > 0 and len(pb_list) > 0:
+66:             tracking_arr = np.vstack(tr_list)
+67:             playback_arr = np.vstack(pb_list)
+68:             n_samples = tracking_arr.shape[0]
+69:             
+70:             # Create a shared unique ID
+71:             neuron_uids = np.arange(n_samples)
+72:             
+73:             # Z-Score Tracking
+74:             tr_mean_time = np.mean(tracking_arr, axis=1, keepdims=True)
+75:             tr_std_time = np.std(tracking_arr, axis=1, keepdims=True) + 1e-8
+76:             tracking_z = (tracking_arr - tr_mean_time) / tr_std_time
+77:             
+78:             # Z-Score Playback
+79:             pb_mean_time = np.mean(playback_arr, axis=1, keepdims=True)
+80:             pb_std_time = np.std(playback_arr, axis=1, keepdims=True) + 1e-8
+81:             playback_z = (playback_arr - pb_mean_time) / pb_std_time
+82:             
+83:             # Extract Metrics
+84:             tr_base = np.mean(tracking_z[:, idx_base_start:idx_base_end], axis=1)
+85:             tr_peak = np.max(tracking_z[:, idx_peak_start:idx_peak_end], axis=1)
+86:             tr_evoked = tr_peak - tr_base
+87:             
+88:             pb_base = np.mean(playback_z[:, idx_base_start:idx_base_end], axis=1)
+89:             pb_peak = np.max(playback_z[:, idx_peak_start:idx_peak_end], axis=1)
+90:             pb_evoked = pb_peak - pb_base
+91:             
+92:             # Store Tracking (Evoked_Z)
+93:             df_tr = pd.DataFrame({'Neuron_UID': neuron_uids, 'Block': block_id, 'n_triggers': n_val, 
+94:                                   'Condition': 'Tracking', 'Evoked_Z': tr_evoked})
+95:             
+96:             # Store Playback (Evoked_Z)
+97:             df_pb = pd.DataFrame({'Neuron_UID': neuron_uids, 'Block': block_id, 'n_triggers': n_val, 
+98:                                   'Condition': 'Playback', 'Evoked_Z': pb_evoked})
+99:             
+100:             raw_results.extend([df_tr, df_pb])
+101: 
+102: df_raw = pd.concat(raw_results, ignore_index=True)
+103: print("Paired Data Extraction (Evoked Response) Complete!")
+104: 
+105: # ==========================================================
+106: # 3. PAIRED STATS, PLOTTING & TABLE GENERATION
+107: # ==========================================================
+108: master_stats_list = [] # We will store ALL statistical results here
+109: 
+110: for n_val in n_values:
+111:     df_plot = df_raw[df_raw['n_triggers'] == n_val].copy()
+112:     if df_plot.empty:
+113:         continue
+114:         
+115:     unique_blocks = sorted(df_plot['Block'].unique())
+116:     current_n_stats = []
+117:     p_values = []
+118:     
+119:     # Run Paired Stats per Block for this n_val using Evoked_Z
+120:     for block in unique_blocks:
+121:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')].sort_values('Neuron_UID')['Evoked_Z']
+122:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')].sort_values('Neuron_UID')['Evoked_Z']
+123:         
+124:         paired_n = len(tr_data)
+125:         
+126:         if paired_n > 1 and len(pb_data) > 1:
+127:             stat, p_val = ttest_rel(tr_data, pb_data, nan_policy='omit')
+128:         else:
+129:             stat, p_val = np.nan, np.nan
+130:             
+131:         p_values.append(p_val)
+132:         
+133:         current_n_stats.append({
+134:             'n_triggers': n_val,
+135:             'Block': block,
+136:             'N_Pairs': paired_n,
+137:             't_stat': stat,
+138:             'raw_p_value': p_val
+139:         })
+140:         
+141:     # Apply FDR Correction across the blocks for this specific n_val
+142:     valid_p = [p for p in p_values if not np.isnan(p)]
+143:     if valid_p:
+144:         _, p_adj_valid, _, _ = multipletests(valid_p, alpha=0.05, method='fdr_bh')
+145:     else:
+146:         p_adj_valid = []
+147:         
+148:     adj_idx = 0
+149:     sig_markers = {}
+150:     
+151:     # Map back the adjusted p-values and assign stars
+152:     for res in current_n_stats:
+153:         if np.isnan(res['raw_p_value']):
+154:             res['adj_p_value'] = np.nan
+155:             res['Significance'] = 'ns'
+156:             sig_markers[res['Block']] = 'ns'
+157:         else:
+158:             adj_p = p_adj_valid[adj_idx]
+159:             res['adj_p_value'] = adj_p
+160:             adj_idx += 1
+161:             
+162:             if adj_p < 0.001: res['Significance'] = '***'
+163:             elif adj_p < 0.01: res['Significance'] = '**'
+164:             elif adj_p < 0.05: res['Significance'] = '*'
+165:             else: res['Significance'] = 'ns'
+166:                 
+167:             sig_markers[res['Block']] = res['Significance']
+168:             
+169:     master_stats_list.extend(current_n_stats)
+170: 
+171:     # Generate the Figure
+172:     fig, ax = plt.subplots(figsize=(10, 5))
+173:     
+174:     sns.boxplot(
+175:         data=df_plot, x='Block', y='Evoked_Z', hue='Condition',
+176:         palette={'Tracking': '#ff9999', 'Playback': '#b3b3b3'}, 
+177:         ax=ax, width=0.6, fliersize=4, boxprops=dict(alpha=0.7)
+178:     )
+179:     
+180:     y_min, y_max = ax.get_ylim()
+181:     y_range = y_max - y_min
+182:     ax.set_ylim(y_min, y_max + y_range * 0.20) 
+183:     
+184:     # Annotate N and Significance
+185:     for x_idx, block in enumerate(unique_blocks):
+186:         tr_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Tracking')]['Evoked_Z']
+187:         pb_data = df_plot[(df_plot['Block'] == block) & (df_plot['Condition'] == 'Playback')]['Evoked_Z']
+188:         
+189:         y_pos_tr = tr_data.max() + (y_range * 0.02) if not tr_data.empty else y_min
+190:         y_pos_pb = pb_data.max() + (y_range * 0.02) if not pb_data.empty else y_min
+191:         
+192:         paired_n = len(tr_data)
+193:         ax.text(x_idx, min(y_pos_tr, y_pos_pb) - (y_range * 0.08), f'n={paired_n}', 
+194:                 ha='center', va='top', fontsize=9, color='gray')
+195: 
+196:         sig = sig_markers.get(block, 'ns')
+197:         if sig != 'ns' and not tr_data.empty and not pb_data.empty:
+198:             bracket_y = max(y_pos_tr, y_pos_pb) + (y_range * 0.08)
+199:             bracket_tip = y_range * 0.02
+200:             x1, x2 = x_idx - 0.2, x_idx + 0.2 
+201:             
+202:             ax.plot([x1, x1, x2, x2], [bracket_y - bracket_tip, bracket_y, bracket_y, bracket_y - bracket_tip], lw=1.5, c='k')
+203:             ax.text((x1 + x2) * 0.5, bracket_y, sig, ha='center', va='bottom', color='k', fontsize=14, fontweight='bold')
+204: 
+205:     ax.set_ylabel('Evoked Z-Score (Peak - Base)', fontsize=12, fontweight='bold')
+206:     ax.set_xlabel('Block Number', fontsize=14, fontweight='bold')
+207:     ax.set_title(f'Paired Evoked_Z: Tracking vs Playback (n_triggers = {n_val})', fontsize=15, fontweight='bold', pad=15)
+208:     ax.grid(True, axis='y', linestyle=':', alpha=0.7)
+209:     
+210:     ax.legend(loc='upper left', frameon=True, fontsize=11)
+211:     
+212:     plt.tight_layout()
+213:     
+214:     # --- SAVE PLOT ---
+215:     fig_filename = os.path.join(output_dir, f'paired_evoked_z_n_{n_val}.png')
+216:     plt.savefig(fig_filename, dpi=300, bbox_inches='tight')
+217:     plt.show()
+218: 
+219: # ==========================================================
+220: # 4. SAVE STATS TABLE
+221: # ==========================================================
+222: df_all_stats_evoked = pd.DataFrame(master_stats_list)
+223: 
+224: print("\n--- Summary of Paired Statistical Tests (EVOKED - FDR Corrected) ---")
+225: display(df_all_stats_evoked)
+226: 
+227: # --- SAVE CSV ---
+228: csv_filename = os.path.join(output_dir, 'paired_evoked_stats_summary_n_triggers.csv')
+229: df_all_stats_evoked.to_csv(csv_filename, index=False)
+230: print(f"\nAll evoked plots and the statistics CSV have been successfully saved to:\n{output_dir}")
+--- Cell 68 ---
+1: import numpy as np
+2: import pandas as pd
+3: import matplotlib.pyplot as plt
+4: import seaborn as sns
+5: import matplotlib.colors as mcolors
+6: import statsmodels.api as sm
+7: from statsmodels.formula.api import ols
+8: from scipy.stats import ttest_ind
+9: from statsmodels.stats.multitest import multipletests
+10: from IPython.display import display
+11: 
+12: # ==========================================
+13: # 0. DATA SANITIZATION
+14: # ==========================================
+15: # Safely mask Condition == -1.0 so it doesn't interfere
+16: for f_data in f_data_s:
+17:     mask = (f_data['Condition'] == -1.0)
+18:     f_data.loc[mask, 'Frequency_changes'] = False
+19: 
+20: # ==========================================
+21: # 1. ADJUSTABLE PARAMETERS & TIME WINDOWS
+22: # ==========================================
+23: dt = 0.005           # Ensure dt is locally defined
+24: t_pre = 0.3          # Time before trigger
+25: t_post = 0.3         # Time after trigger
+26: 
+27: # CRITICAL FIX: Sync bins and expected_length locally!
+28: n_bins_pre = int(t_pre / dt)
+29: n_bins_post = int(t_post / dt)
+30: expected_length = n_bins_pre + n_bins_post
+31: 
+32: n_per_group = 5      # Adjust: Number of triggers per chunk
+33: n_groups = 3         # Adjust: Number of chunks per condition
+34: total_needed = n_groups * n_per_group
+35: 
+36: # Define evaluation windows
+37: baseline_bins = int(0.2 / dt)
+38: idx_base_start = n_bins_pre - baseline_bins
+39: idx_base_end = n_bins_pre
+40: idx_peak_start = n_bins_pre
+41: idx_peak_end = expected_length
+42: 
+43: # Generate chronological labels
+44: labels_tr = [f"TR: Last {i*n_per_group}-{(i-1)*n_per_group+1}" for i in range(n_groups, 0, -1)]
+45: labels_pb = [f"PB: First {i*n_per_group+1}-{(i+1)*n_per_group}" for i in range(n_groups)]
+46: chunk_labels = labels_tr + labels_pb
+47: 
+48: # Dynamically generate color palettes
+49: tr_colors = sns.color_palette("Reds", n_colors=n_groups + 2)[2:]
+50: pb_colors = sns.color_palette("Greys", n_colors=n_groups + 2)[2:] 
+51: palette = {}
+52: for i, lbl in enumerate(labels_tr): palette[lbl] = mcolors.to_hex(tr_colors[i])
+53: for i, lbl in enumerate(labels_pb): palette[lbl] = mcolors.to_hex(pb_colors[i])
+54: 
+55: # ==========================================
+56: # 2. ROBUST DATA EXTRACTION HELPER
+57: # ==========================================
+58: def get_subset_channel_means(n_data, event_indices):
+59:     segments = []
+60:     for i in event_indices:
+61:         start, stop = int(i - n_bins_pre), int(i + n_bins_post)
+62:         
+63:         # Completely inside bounds
+64:         if start >= 0 and stop <= n_data.shape[-1]:
+65:             seg = n_data[:, start:stop]
+66:             if seg.shape[1] == expected_length:
+67:                 segments.append(seg)
+68:                 
+69:         # Handle recordings ending slightly early by zero-padding the missing tail
+70:         elif start >= 0 and start < n_data.shape[-1]:
+71:             raw_seg = n_data[:, start:]
+72:             pad_width = expected_length - raw_seg.shape[1]
+73:             seg = np.pad(raw_seg, ((0, 0), (0, pad_width)), mode='constant')
+74:             segments.append(seg)
+75:             
+76:     if len(segments) > 0:
+77:         return np.mean(np.stack(segments, axis=0), axis=0) 
+78:     return None
+79: 
+80: # ==========================================
+81: # 3. EXTRACT DATA REGARDLESS OF BLOCKS
+82: # ==========================================
+83: tr_data_chunks = [[] for _ in range(n_groups)]
+84: pb_data_chunks = [[] for _ in range(n_groups)]
+85: 
+86: for n_data, f_data in zip(n_data_s, f_data_s):
+87:     events_pb = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 1))
+88:     events_tr = np.flatnonzero((f_data['Frequency_changes'] == 1) & (f_data['Condition'] == 0))
+89:     
+90:     if len(events_tr) >= total_needed and len(events_pb) >= total_needed:
+91:         # Tracking Chunks (Chronological from the end)
+92:         for chunk_idx, i in enumerate(range(n_groups, 0, -1)):
+93:             start = -i * n_per_group
+94:             end = -(i - 1) * n_per_group if i > 1 else None
+95:             mean_trace = get_subset_channel_means(n_data, events_tr[start:end])
+96:             if mean_trace is not None:
+97:                 tr_data_chunks[chunk_idx].append(mean_trace)
+98: 
+99:         # Playback Chunks (Chronological from the start)
+100:         for chunk_idx, i in enumerate(range(n_groups)):
+101:             start = i * n_per_group
+102:             end = (i + 1) * n_per_group
+103:             mean_trace = get_subset_channel_means(n_data, events_pb[start:end])
+104:             if mean_trace is not None:
+105:                 pb_data_chunks[chunk_idx].append(mean_trace)
+106: 
+107: # ==========================================
+108: # 4. COMPUTE Z-SCORES & FORMAT DATAFRAME
+109: # ==========================================
+110: master_data = []
+111: 
+112: # Process Tracking
+113: for chunk_idx, chunk in enumerate(tr_data_chunks):
+114:     if len(chunk) > 0:
+115:         final_dat = np.concatenate(chunk, axis=0)
+116:         mean_time = np.mean(final_dat, axis=1, keepdims=True)
+117:         std_time = np.std(final_dat, axis=1, keepdims=True) + 1e-8
+118:         z_dat = (final_dat - mean_time) / std_time
+119:         
+120:         master_data.append(pd.DataFrame({
+121:             'Chunk': labels_tr[chunk_idx], 'Condition': 'Tracking', 'Order': chunk_idx,
+122:             'Base_Z': np.mean(z_dat[:, idx_base_start:idx_base_end], axis=1),
+123:             'Peak_Z': np.max(z_dat[:, idx_peak_start:idx_peak_end], axis=1),
+124:             'Evoked_Z': np.max(z_dat[:, idx_peak_start:idx_peak_end], axis=1) - np.mean(z_dat[:, idx_base_start:idx_base_end], axis=1)
+125:         }))
+126: 
+127: # Process Playback
+128: for chunk_idx, chunk in enumerate(pb_data_chunks):
+129:     if len(chunk) > 0:
+130:         final_dat = np.concatenate(chunk, axis=0)
+131:         mean_time = np.mean(final_dat, axis=1, keepdims=True)
+132:         std_time = np.std(final_dat, axis=1, keepdims=True) + 1e-8
+133:         z_dat = (final_dat - mean_time) / std_time
+134:         
+135:         master_data.append(pd.DataFrame({
+136:             'Chunk': labels_pb[chunk_idx], 'Condition': 'Playback', 'Order': chunk_idx + n_groups,
+137:             'Base_Z': np.mean(z_dat[:, idx_base_start:idx_base_end], axis=1),
+138:             'Peak_Z': np.max(z_dat[:, idx_peak_start:idx_peak_end], axis=1),
+139:             'Evoked_Z': np.max(z_dat[:, idx_peak_start:idx_peak_end], axis=1) - np.mean(z_dat[:, idx_base_start:idx_base_end], axis=1)
+140:         }))
+141: 
+142: if len(master_data) == 0:
+143:     print('No data to plot: master_data is empty.')
+144: else:
+145:     df_plot = pd.concat(master_data, ignore_index=True)
+146:     new_palette = {}
+147:     new_chunk_labels = []
+148:     for cl in chunk_labels:
+149:         n_count = len(df_plot[df_plot['Chunk'] == cl])
+150:         if n_count > 0:
+151:             new_label = f"{cl}\n(n={n_count})"
+152:             df_plot.loc[df_plot['Chunk'] == cl, 'Chunk'] = new_label
+153:             new_palette[new_label] = palette[cl]
+154:             new_chunk_labels.append(new_label)
+155:     palette = new_palette
+156:     chunk_labels = new_chunk_labels
+157:     ordered_chunks = df_plot.sort_values('Order')['Chunk'].unique()
+158: 
+159:     # ==========================================
+160:     # 5. PLOTTING THE OVERVIEW HORIZONTAL GRID
+161:     # ==========================================
+162:     metrics_to_plot = [
+163:         ('Base_Z', 'Baseline Z-Score\n(-0.2s to 0s)'),
+164:         ('Peak_Z', 'Peak Response\nZ-Score'),
+165:         ('Evoked_Z', 'Total Evoked Z-Score\n(Peak - Base)')
+166:     ]
+167: 
+168:     fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharex=True)
+169: 
+170:     for i, (col_name, title) in enumerate(metrics_to_plot):
+171:         ax = axes[i]
+172:         sns.boxplot(
+173:             data=df_plot.sort_values('Order'), x='Chunk', y=col_name, hue='Chunk',
+174:             palette=palette, ax=ax, width=0.6, fliersize=3, dodge=False
+175:         )
+176:     
+177:         ax.axvline(n_groups - 0.5, color='black', linestyle='--', alpha=0.5, zorder=0) 
+178:         ax.set_title(title, fontsize=14, fontweight='bold')
+179:         ax.set_ylabel('Z-Score', fontsize=12) if i == 0 else ax.set_ylabel('')
+180:         ax.set_xlabel('')
+181:         ax.tick_params(axis='x', rotation=45)
+182:         ax.grid(True, axis='y', alpha=0.3)
+183:     
+184:         y_min, y_max = ax.get_ylim()
+185:         y_range = y_max - y_min
+186:         ax.set_ylim(y_min, y_max + y_range * 0.15)
+187:     
+188:         for idx, chunk_label in enumerate(chunk_labels):
+189:             n_count = len(df_plot[df_plot['Chunk'] == chunk_label])
+190:             if n_count > 0:
+191:                 # ax.text(idx, y_max + y_range * 0.05, f'n={n_count}', 
+192:                         # ha='center', va='bottom', fontsize=10, color='black')
+193: 
+194:     plt.suptitle(f'Global Chronological Progression: Tracking -> Playback\n({n_per_group} triggers/chunk, block-agnostic)', fontsize=16, y=1.05)
+195:     plt.tight_layout()
+196:     plt.show()
+197: 
+198:     # ==========================================
+199:     # 6. AUTOMATED STATS, ANNOTATED BOXPLOTS & HEATMAPS
+200:     # ==========================================
+201:     for metric, title in metrics_to_plot:
+202:         print(f"\n" + "="*80)
+203:         print(f"  STATISTICAL ANALYSIS: {metric}")
+204:         print("="*80)
+205:     
+206:         # Global ANOVA
+207:         try:
+208:             model = ols(f'{metric} ~ C(Chunk)', data=df_plot).fit()
+209:             anova_table = sm.stats.anova_lm(model, typ=2)
+210:             print(f"\n[1] Global ANOVA for {metric}:")
+211:             display(anova_table)
+212:         except Exception as e:
+213:             print(f"\n[1] Could not perform ANOVA for {metric}: {e}")
+214:     
+215:         # Pairwise Stats (Adjacent Pairs specifically for the Boxplot)
+216:         adjacent_pairs = [(ordered_chunks[i], ordered_chunks[i+1]) for i in range(len(ordered_chunks)-1)]
+217:         adj_p_vals = []
+218:     
+219:         for c1, c2 in adjacent_pairs:
+220:             d1 = df_plot[df_plot['Chunk'] == c1][metric]
+221:             d2 = df_plot[df_plot['Chunk'] == c2][metric]
+222:             p = ttest_ind(d1, d2, equal_var=False, nan_policy='omit')[1] if len(d1) > 1 and len(d2) > 1 else 1.0
+223:             adj_p_vals.append(p)
+224:         
+225:         _, p_adj, _, _ = multipletests(adj_p_vals, alpha=0.05, method='fdr_bh')
+226:     
+227:         # --- Plot Annotated Boxplot ---
+228:         fig, ax = plt.subplots(figsize=(10, 6))
+229:         sns.boxplot(
+230:             data=df_plot.sort_values('Order'), x='Chunk', y=metric, hue='Chunk',
+231:             palette=palette, ax=ax, width=0.6, fliersize=3, dodge=False
+232:         )
+233:     
+234:         ax.axvline(n_groups - 0.5, color='black', linestyle='--', alpha=0.5, zorder=0)
+235:         ax.set_title(f"{title} - Adjacent Transitions", fontsize=15, fontweight='bold', pad=20)
+236:         ax.set_ylabel('Z-Score', fontsize=12)
+237:         ax.set_xlabel('')
+238:         ax.tick_params(axis='x', rotation=45)
+239:         ax.grid(True, axis='y', alpha=0.3)
+240:     
+241:         y_min, y_max = ax.get_ylim()
+242:         y_range = y_max - y_min
+243:         ax.set_ylim(y_min, y_max + y_range * 0.25)
+244:     
+245:         h_base = y_max + y_range * 0.05
+246:         step = y_range * 0.08
+247:     
+248:         for i, p_val in enumerate(p_adj):
+249:             if p_val < 0.001: sig = '***'
+250:             elif p_val < 0.01: sig = '**'
+251:             elif p_val < 0.05: sig = '*'
+252:             else: sig = 'ns'
+253:             
+254:             if sig != 'ns':
+255:                 x1, x2 = i, i + 1
+256:                 h = h_base + (i % 2) * step
+257:                 ax.plot([x1, x1, x2, x2], [h - step*0.2, h, h, h - step*0.2], lw=1.5, c='k')
+258:                 ax.text((x1 + x2) * 0.5, h, sig, ha='center', va='bottom', color='k', fontsize=12, fontweight='bold')
+259: 
+260:         plt.tight_layout()
+261:         plt.show()
+262: 
+263:         # --- Plot Complete Significance Heatmap ---
+264:         matrix_p = pd.DataFrame(index=ordered_chunks, columns=ordered_chunks, dtype=float)
+265:         matrix_sig = pd.DataFrame(index=ordered_chunks, columns=ordered_chunks, dtype=str)
+266:     
+267:         for c1 in ordered_chunks:
+268:             for c2 in ordered_chunks:
+269:                 if c1 == c2:
+270:                     matrix_p.loc[c1, c2] = 1.0
+271:                     matrix_sig.loc[c1, c2] = '-'
+272:                 else:
+273:                     d1 = df_plot[df_plot['Chunk'] == c1][metric]
+274:                     d2 = df_plot[df_plot['Chunk'] == c2][metric]
+275:                     p = ttest_ind(d1, d2, equal_var=False, nan_policy='omit')[1] if len(d1) > 1 and len(d2) > 1 else 1.0
+276:                     matrix_p.loc[c1, c2] = p
+277:                 
+278:                     if p < 0.001: matrix_sig.loc[c1, c2] = '***'
+279:                     elif p < 0.01: matrix_sig.loc[c1, c2] = '**'
+280:                     elif p < 0.05: matrix_sig.loc[c1, c2] = '*'
+281:                     else: matrix_sig.loc[c1, c2] = ''
+282: 
+283:         fig, ax = plt.subplots(figsize=(8, 6))
+284:         sns.heatmap(
+285:             matrix_p.astype(float), annot=matrix_sig, fmt="", cmap='coolwarm_r', 
+286:             vmin=0, vmax=0.05, cbar_kws={'label': 'Uncorrected P-Value'}, ax=ax, linewidths=1, linecolor='white'
+287:         )
+288:     
+289:         ax.set_title(f"{title} - All Pairwise Comparisons Heatmap", fontsize=14, fontweight='bold', pad=15)
+290:         ax.tick_params(axis='x', rotation=45)
+291:         plt.tight_layout()
+292:         plt.show()

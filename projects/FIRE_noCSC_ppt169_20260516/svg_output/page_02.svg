@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#FFFFFF"/>
+
+  <!-- Title bar -->
+  <text x="60" y="52" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0C4A6E">My Training Path to This Project</text>
+  <line x1="60" y1="68" x2="140" y2="68" stroke="#7DD3FC" stroke-width="3"/>
+
+  <!-- Table -->
+  <g transform="translate(60,100)">
+    <!-- Header -->
+    <rect x="0" y="0" width="1160" height="42" rx="6" fill="#0C4A6E"/>
+    <text x="280" y="28" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Degree &amp; Institution</text>
+    <text x="620" y="28" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Training &amp; Outcomes</text>
+    <text x="1100" y="28" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Period</text>
+
+    <!-- Row 1 -->
+    <rect x="0" y="43" width="560" height="110" fill="#F0F9FF" rx="4"/>
+    <text x="16" y="68" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">BSc Neuroscience</text>
+    <text x="16" y="90" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">University of Bristol</text>
+    <text x="16" y="130" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Physiology · Pharmacology · Cellular Neuro</text>
+    <rect x="560" y="43" width="530" height="110" fill="#F8FAFC" rx="4"/>
+    <text x="576" y="68" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">Broad foundation in neuroscience disciplines</text>
+    <text x="576" y="95" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Undergraduate research: Layer I cortical neuron segmentation (SBEM microscopy)</text>
+    <text x="1120" y="98" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">2018–21</text>
+
+    <!-- Row 2 -->
+    <rect x="0" y="158" width="560" height="110" fill="#F0F9FF" rx="4"/>
+    <text x="16" y="183" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">MSc Brain &amp; Mind Sciences</text>
+    <text x="16" y="205" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">UCL — Graduated with Distinction</text>
+    <text x="16" y="245" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Neural Imaging &amp; Neural Engineering</text>
+    <rect x="560" y="158" width="530" height="110" fill="#F8FAFC" rx="4"/>
+    <text x="576" y="183" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">Dissertation: ML cluster analysis of EEG-fMRI statistical maps in Epilepsy</text>
+    <text x="576" y="205" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Thesis awarded Distinction</text>
+    <text x="576" y="227" font-family="Segoe UI, system-ui, sans-serif" font-size="12" font-weight="600" fill="#0369A1">OHBM 2025 Poster Presentation, Brisbane</text>
+    <text x="1120" y="213" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">2021–24</text>
+
+    <!-- Row 3 -->
+    <rect x="0" y="273" width="560" height="110" fill="#F0F9FF" rx="4"/>
+    <text x="16" y="298" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">M2 BiP + DEC</text>
+    <text x="16" y="320" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">Sorbonne Université · ENS-PSL</text>
+    <rect x="560" y="273" width="530" height="110" fill="#F8FAFC" rx="4"/>
+    <text x="576" y="298" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">Bayesian Brain · Cognitive Models · Computational Neuroscience</text>
+    <text x="576" y="325" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Bridging computational skills with cognitive theory</text>
+    <text x="1120" y="328" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">2025–26</text>
+
+    <!-- Row 4 -->
+    <rect x="0" y="388" width="560" height="110" fill="#F0F9FF" rx="4"/>
+    <text x="16" y="413" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">M2 Internship</text>
+    <text x="16" y="435" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">Boubenec Lab, ENS-PSL</text>
+    <rect x="560" y="388" width="530" height="110" fill="#F8FAFC" rx="4"/>
+    <text x="576" y="413" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">In vivo electrophysiology · Closed-loop acoustic VR · 32-channel chronic arrays</text>
+    <text x="576" y="440" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">PCA · GPFA · Granger causality · Population decoding</text>
+    <text x="576" y="462" font-family="Segoe UI, system-ui, sans-serif" font-size="12" font-weight="600" fill="#0369A1">Already operating at the exact intersection this PhD demands</text>
+    <text x="1120" y="443" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Current</text>
+  </g>
+
+  <text x="1220" y="700" text-anchor="end" font-family="Segoe UI, system-ui, sans-serif" font-size="10" fill="#94A3B8">2</text>
+</svg>

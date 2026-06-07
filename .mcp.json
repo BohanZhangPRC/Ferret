@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "wolfram": {
+      "command": "C:\\Users\\PenPen\\.local\\bin\\wolfravant-mcp.exe",
+      "env": {
+        "WOLFRAM_APP_ID": "V54GJQ3GKG"
+      }
+    }
+  }
+}

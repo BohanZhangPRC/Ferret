@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#FFFFFF" />
+  <text x="60" y="52" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0C4A6E">Three Scientific Goals &amp; Methodology</text>
+  <line x1="60" y1="68" x2="140" y2="68" stroke="#7DD3FC" stroke-width="3" />
+
+  
+  <path fill="#F0F9FF" stroke="#BAE6FD" stroke-width="1" d="M72,100 H414 A12,12 0 0 1 426,112 V538 A12,12 0 0 1 414,550 H72 A12,12 0 0 1 60,538 V112 A12,12 0 0 1 72,100 Z" />
+  <text x="88" y="138" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0369A1">Goal 1</text>
+  <text x="88" y="162" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#0C4A6E">Cortical Hierarchy</text>
+  <text x="88" y="190" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">Map sensorimotor signal distribution across the auditory cortical hierarchy</text>
+
+  <text x="88" y="240" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="700" fill="#0369A1">Approach</text>
+  <text x="88" y="270" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Neuropixels 2.0 + 32ch arrays</text>
+  <text x="88" y="296" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Record A1, belt (AAF/PSF), PMC</text>
+  <text x="88" y="322" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Compare anticipatory signal,</text>
+  <text x="96" y="342" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">kinematic encoding, correlations</text>
+  <text x="88" y="370" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Granger causality &amp; PDC</text>
+  <text x="96" y="390" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">top-down vs. bottom-up</text>
+
+  
+  <path fill="#F0F9FF" stroke="#BAE6FD" stroke-width="1" d="M468,100 H810 A12,12 0 0 1 822,112 V538 A12,12 0 0 1 810,550 H468 A12,12 0 0 1 456,538 V112 A12,12 0 0 1 468,100 Z" />
+  <text x="484" y="138" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0369A1">Goal 2</text>
+  <text x="484" y="162" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#0C4A6E">Multi-Mapping Storage</text>
+  <text x="484" y="190" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">Characterize storage and retrieval of multiple position→frequency mappings</text>
+
+  <text x="484" y="240" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="700" fill="#0369A1">Approach</text>
+  <text x="484" y="270" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• 2+ distinct mappings</text>
+  <text x="96" y="292" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">reversed or orthogonal</text>
+  <text x="484" y="318" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Alternated in blocks</text>
+  <text x="484" y="344" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Probe switching dynamics</text>
+  <text x="484" y="370" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• dPCA: mapping-specific subspaces</text>
+  <text x="484" y="396" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Latent factor models</text>
+
+  
+  <path fill="#F0F9FF" stroke="#BAE6FD" stroke-width="1" d="M864,100 H1208 A12,12 0 0 1 1220,112 V538 A12,12 0 0 1 1208,550 H864 A12,12 0 0 1 852,538 V112 A12,12 0 0 1 864,100 Z" />
+  <text x="880" y="138" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0369A1">Goal 3</text>
+  <text x="880" y="162" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#0C4A6E">Inverse Model</text>
+  <text x="880" y="190" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">Reveal how auditory targets are converted into motor commands</text>
+
+  <text x="880" y="240" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="700" fill="#0369A1">Approach</text>
+  <text x="880" y="270" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Target-frequency reward task</text>
+  <text x="880" y="296" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Produce specific frequencies</text>
+  <text x="96" y="318" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">on demand for reward</text>
+  <text x="880" y="344" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• Encoding models: sensory vs.</text>
+  <text x="96" y="364" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">motor coordinate frames</text>
+  <text x="880" y="390" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#1A1A2E">• GPFA: goal-directed vs. passive</text>
+
+  
+  <path fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1" d="M68,580 H1212 A8,8 0 0 1 1220,588 V622 A8,8 0 0 1 1212,630 H68 A8,8 0 0 1 60,622 V588 A8,8 0 0 1 68,580 Z" />
+  <text x="640" y="612" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Neuropixels 2.0 | Closed-loop VR | PCA · GPFA · dPCA | Granger Causality · PDC | Linear &amp; Nonlinear Population Decoding</text>
+
+  <text x="1220" y="700" text-anchor="end" font-family="Segoe UI, system-ui, sans-serif" font-size="10" fill="#94A3B8">7</text>
+</svg>

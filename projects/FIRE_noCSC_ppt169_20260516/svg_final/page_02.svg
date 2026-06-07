@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#FFFFFF" />
+
+  
+  <text x="60" y="52" font-family="Segoe UI, system-ui, sans-serif" font-size="28" font-weight="700" fill="#0C4A6E">My Training Path to This Project</text>
+  <line x1="60" y1="68" x2="140" y2="68" stroke="#7DD3FC" stroke-width="3" />
+
+  
+  <g transform="translate(60,100)">
+    
+    <path fill="#0C4A6E" d="M6,0 H1154 A6,6 0 0 1 1160,6 V36 A6,6 0 0 1 1154,42 H6 A6,6 0 0 1 0,36 V6 A6,6 0 0 1 6,0 Z" />
+    <text x="280" y="28" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Degree &amp; Institution</text>
+    <text x="620" y="28" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Training &amp; Outcomes</text>
+    <text x="1100" y="28" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Period</text>
+
+    
+    <path fill="#F0F9FF" d="M4,43 H556 A4,4 0 0 1 560,47 V149 A4,4 0 0 1 556,153 H4 A4,4 0 0 1 0,149 V47 A4,4 0 0 1 4,43 Z" />
+    <text x="16" y="68" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">BSc Neuroscience</text>
+    <text x="16" y="90" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">University of Bristol</text>
+    <text x="16" y="130" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Physiology · Pharmacology · Cellular Neuro</text>
+    <path fill="#F8FAFC" d="M564,43 H1086 A4,4 0 0 1 1090,47 V149 A4,4 0 0 1 1086,153 H564 A4,4 0 0 1 560,149 V47 A4,4 0 0 1 564,43 Z" />
+    <text x="576" y="68" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">Broad foundation in neuroscience disciplines</text>
+    <text x="576" y="95" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Undergraduate research: Layer I cortical neuron segmentation (SBEM microscopy)</text>
+    <text x="1120" y="98" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">2018–21</text>
+
+    
+    <path fill="#F0F9FF" d="M4,158 H556 A4,4 0 0 1 560,162 V264 A4,4 0 0 1 556,268 H4 A4,4 0 0 1 0,264 V162 A4,4 0 0 1 4,158 Z" />
+    <text x="16" y="183" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">MSc Brain &amp; Mind Sciences</text>
+    <text x="16" y="205" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">UCL — Graduated with Distinction</text>
+    <text x="16" y="245" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Neural Imaging &amp; Neural Engineering</text>
+    <path fill="#F8FAFC" d="M564,158 H1086 A4,4 0 0 1 1090,162 V264 A4,4 0 0 1 1086,268 H564 A4,4 0 0 1 560,264 V162 A4,4 0 0 1 564,158 Z" />
+    <text x="576" y="183" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">Dissertation: ML cluster analysis of EEG-fMRI statistical maps in Epilepsy</text>
+    <text x="576" y="205" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Thesis awarded Distinction</text>
+    <text x="576" y="227" font-family="Segoe UI, system-ui, sans-serif" font-size="12" font-weight="600" fill="#0369A1">OHBM 2025 Poster Presentation, Brisbane</text>
+    <text x="1120" y="213" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">2021–24</text>
+
+    
+    <path fill="#F0F9FF" d="M4,273 H556 A4,4 0 0 1 560,277 V379 A4,4 0 0 1 556,383 H4 A4,4 0 0 1 0,379 V277 A4,4 0 0 1 4,273 Z" />
+    <text x="16" y="298" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">M2 BiP + DEC</text>
+    <text x="16" y="320" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">Sorbonne Université · ENS-PSL</text>
+    <path fill="#F8FAFC" d="M564,273 H1086 A4,4 0 0 1 1090,277 V379 A4,4 0 0 1 1086,383 H564 A4,4 0 0 1 560,379 V277 A4,4 0 0 1 564,273 Z" />
+    <text x="576" y="298" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">Bayesian Brain · Cognitive Models · Computational Neuroscience</text>
+    <text x="576" y="325" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Bridging computational skills with cognitive theory</text>
+    <text x="1120" y="328" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">2025–26</text>
+
+    
+    <path fill="#F0F9FF" d="M4,388 H556 A4,4 0 0 1 560,392 V494 A4,4 0 0 1 556,498 H4 A4,4 0 0 1 0,494 V392 A4,4 0 0 1 4,388 Z" />
+    <text x="16" y="413" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#0C4A6E">M2 Internship</text>
+    <text x="16" y="435" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#64748B">Boubenec Lab, ENS-PSL</text>
+    <path fill="#F8FAFC" d="M564,388 H1086 A4,4 0 0 1 1090,392 V494 A4,4 0 0 1 1086,498 H564 A4,4 0 0 1 560,494 V392 A4,4 0 0 1 564,388 Z" />
+    <text x="576" y="413" font-family="Segoe UI, system-ui, sans-serif" font-size="13" fill="#1A1A2E">In vivo electrophysiology · Closed-loop acoustic VR · 32-channel chronic arrays</text>
+    <text x="576" y="440" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">PCA · GPFA · Granger causality · Population decoding</text>
+    <text x="576" y="462" font-family="Segoe UI, system-ui, sans-serif" font-size="12" font-weight="600" fill="#0369A1">Already operating at the exact intersection this PhD demands</text>
+    <text x="1120" y="443" font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="#64748B">Current</text>
+  </g>
+
+  <text x="1220" y="700" text-anchor="end" font-family="Segoe UI, system-ui, sans-serif" font-size="10" fill="#94A3B8">2</text>
+</svg>

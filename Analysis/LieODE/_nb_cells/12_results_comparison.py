@@ -43,11 +43,18 @@ if e2e_df is not None and baseline_df is not None:
         print(f"  Paired t-test: t={t_sr:.3f}, p={p_sr:.4f}")
 
     print()
-    print("--- Eigenvalues ---")
-    print(f"  Baseline |Real|: {compare_sr['Eig_Real_baseline'].mean():.4f}, "
-          f"E2E |Real|: {compare_sr['Eig_Real_Mean'].mean():.4f}")
-    print(f"  Baseline |Imag|: {compare_sr['Eig_Imag_baseline'].mean():.4f}, "
-          f"E2E |Imag|: {compare_sr['Eig_Imag_Mean'].mean():.4f}")
+    print("--- Eigenvalues (per-session diagnostics, NOT cross-session averages) ---")
+    print(f"  Baseline |Real| (per-session): "
+          f"{compare_sr['Eig_Real_baseline'].round(4).tolist()}")
+    print(f"  E2E |Real| (per-session):     "
+          f"{compare_sr['Eig_Real_Mean'].round(4).tolist()}")
+    print(f"  Baseline |Imag| (per-session): "
+          f"{compare_sr['Eig_Imag_baseline'].round(4).tolist()}")
+    print(f"  E2E |Imag| (per-session):     "
+          f"{compare_sr['Eig_Imag_Mean'].round(4).tolist()}")
+    print(f"  (E2E eigenvalues are in arbitrary encoder-scale units —")
+    print(f"   not comparable across independently-trained sessions.")
+    print(f"   Only SR — a scale-invariant ratio — is cross-session comparable.)")
 
     # ---- Merge per-condition R2_drive ----
     # baseline_df has R2_drive per condition; e2e_df has R2_drive_rollout per condition

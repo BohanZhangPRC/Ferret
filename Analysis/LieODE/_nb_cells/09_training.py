@@ -153,10 +153,17 @@ def compute_r2_drive_shuffle(model, ep_n, ep_drive, dt=0.005,
     if T_drive < 2:
         return float('nan')
 
+    # Minimum shift >= MINI_TRAJ_LEN: shifts smaller than the trajectory
+    # length leave the shuffled drive highly correlated with the original
+    # (anti-conservative null).  We enforce a gap at least as large as
+    # the rollout window so the null genuinely breaks alignment.
+    min_shift = max(1, window_len)
+    if T_drive <= 2 * min_shift:
+        min_shift = max(1, T_drive // 3)
+
     vals = []
     for _ in range(n_shuffles):
-        # Circular shift: preserves autocorrelation, destroys alignment
-        shift = np.random.randint(1, T_drive)
+        shift = np.random.randint(min_shift, T_drive - min_shift)
         ep_drive_shuf = np.roll(ep_drive, shift, axis=0)
         r2d = compute_r2_drive_rollout(model, ep_n, ep_drive_shuf,
                                         dt=dt, window_len=window_len,

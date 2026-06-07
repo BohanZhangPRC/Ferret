@@ -66,6 +66,9 @@ if HAS_CEBRA:
             continue
 
         # ---- Train dummy CEBRA (shuffled labels) ----
+        # NOTE: uses full permutation (destroys autocorrelation). This is a
+        # "strong negative control" — destroys ALL label structure. For an
+        # autocorrelation-preserving dummy, use circular-shift labels instead.
         all_labels_shuf = [np.random.permutation(l) for l in all_labels]
         cebra_dummy = None
         try:

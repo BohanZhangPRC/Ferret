@@ -232,12 +232,19 @@ def train_one_session(model, n_data_session, f_df, session_idx,
             f"To implement: extract per-epoch multi-dim drive vectors aligned "
             f"to epoch boundaries with TAU_SHIFT, matching epochs_l alignment.")
 
-    # Train/val split on epochs
+    # Train/val split on epochs (requires >=2 epochs per condition for valid split)
     all_train_n, all_train_l, all_train_d = [], [], []
     val_epochs = {}
+    n_skipped_val = 0
     for cond_name in ["Tracking", "Playback"]:
         cd = cond_data[cond_name]
         n_ep = len(cd['n'])
+        if n_ep < 2:
+            print(f"  Session {session_idx} {cond_name}: only {n_ep} epoch(s), "
+                  f"skipping (need >=2 for train/val split)")
+            n_skipped_val += 1
+            val_epochs[cond_name] = {'n': [], 'l': [], 'd': []}
+            continue
         n_train = max(1, int(n_ep * TRAIN_VAL_SPLIT))
         # Training epochs
         for i in range(n_train):
@@ -251,8 +258,8 @@ def train_one_session(model, n_data_session, f_df, session_idx,
             'd': cd['d'][n_train:],
         }
 
-    if not all_train_n:
-        print(f"  Session {session_idx}: no training data")
+    if n_skipped_val >= 2 or not all_train_n:
+        print(f"  Session {session_idx}: insufficient epochs for train/val, skipping")
         return model, {}, {}
 
     history = {'loss_total': [], 'loss_infonce': [], 'loss_dyn': [],

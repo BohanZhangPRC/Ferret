@@ -1,4 +1,4 @@
-## 2. End-to-End Lie-ODE Model
+## 2. End-to-End Lie Dynamics Model (discrete matrix_exp default; ODE experimental)
 
 PyTorch implementation of the joint encoder + Lie generator pipeline.
 

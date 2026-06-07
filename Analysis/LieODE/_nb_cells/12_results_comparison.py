@@ -27,20 +27,32 @@ if e2e_df is not None and baseline_df is not None:
           Eig_Real_baseline=("Eig_Real_Mean", "mean"),
           Eig_Imag_baseline=("Eig_Imag_Mean", "mean")).reset_index()
 
+    # Use empirical pooled SR (average of TR/PB condition-specific SR) when available
+    if 'SR_Tracking' in e2e_session_df.columns and 'SR_Playback' in e2e_session_df.columns:
+        e2e_session_df['SR_empirical'] = e2e_session_df[['SR_Tracking','SR_Playback']].mean(axis=1)
+
     compare_sr = baseline_session.merge(
         e2e_session_df[["Session_Idx", "Headstage", "SR", "Eig_Real_Mean",
                         "Eig_Imag_Mean", "Loss_final"]],
         on=["Session_Idx", "Headstage"],
         suffixes=("", "_e2e"))
 
+    # Add empirical pooled SR if available
+    sr_e2e_col = 'SR_empirical' if 'SR_empirical' in e2e_session_df.columns else 'SR'
+
     print(f"Session-level merge: {len(compare_sr)} sessions")
     print()
     print("--- Skewness Ratio ---")
-    print(f"  Baseline SR:  {compare_sr['SR_baseline'].mean():.4f}")
-    print(f"  E2E SR:       {compare_sr['SR'].mean():.4f}")
-    if len(compare_sr) > 1:
+    print(f"  Baseline SR (OLS post-hoc):    {compare_sr['SR_baseline'].mean():.4f}")
+    print(f"  E2E SR (random-drive diag):    {compare_sr['SR'].mean():.4f}")
+    if 'SR_empirical' in e2e_session_df.columns:
+        compare_sr['SR_empirical'] = e2e_session_df['SR_empirical'].values
+        print(f"  E2E SR (empirical pooled):     {compare_sr['SR_empirical'].mean():.4f}")
+        t_sr, p_sr = ttest_rel(compare_sr["SR_baseline"], compare_sr["SR_empirical"])
+    else:
         t_sr, p_sr = ttest_rel(compare_sr["SR_baseline"], compare_sr["SR"])
-        print(f"  Paired t-test: t={t_sr:.3f}, p={p_sr:.4f}")
+    if len(compare_sr) > 1:
+        print(f"  Paired t-test (Baseline vs E2E empirical): t={t_sr:.3f}, p={p_sr:.4f}")
 
     print()
     print("--- Eigenvalues (per-session diagnostics, NOT cross-session averages) ---")
@@ -90,14 +102,15 @@ if e2e_df is not None and baseline_df is not None:
         print(f"  Gate (Baseline R2_drive > Dummy-CEBRA): "
               f"{gate_base_dummy}/{len(base_dummy)}")
 
-    # E2E gate: use ONLY shortest window (where shuffle null is computed)
+    # E2E gate: primary horizon only (where shuffle null is computed).
+    # Drop rows where either true or shuffle R2_drive is NaN before comparison.
     e2e_gate = e2e_df[e2e_df["Window_Bins"] == VAL_ROLLOUT_LENS[0]][
         ["Session_Idx", "Headstage", "Condition",
-         "R2_drive_rollout", "R2_drive_shuffle"]].copy()
-    gate_e2e_shuf = (e2e_gate["R2_drive_rollout"].dropna() >
-                      e2e_gate["R2_drive_shuffle"].dropna()).sum()
+         "R2_drive_rollout", "R2_drive_shuffle"]].dropna().copy()
+    gate_e2e_shuf = (e2e_gate["R2_drive_rollout"] >
+                      e2e_gate["R2_drive_shuffle"]).sum()
     print(f"  Gate (E2E R2_drive > shuffle, {VAL_ROLLOUT_LENS[0]} bins): "
-          f"{gate_e2e_shuf}/{len(e2e_gate.dropna())}")
+          f"{gate_e2e_shuf}/{len(e2e_gate)}")
 
     # --- Visualization ---
     fig, axes = plt.subplots(2, 3, figsize=(10, 6))
@@ -172,7 +185,7 @@ if e2e_df is not None and baseline_df is not None:
     axes[1, 2].set_ylabel("Pass Fraction"); axes[1, 2].set_ylim(0, 1.1)
     axes[1, 2].set_title("Gate Pass Rates")
 
-    plt.suptitle("Baseline vs End-to-End Lie-ODE Comparison",
+    plt.suptitle("Baseline vs End-to-End Lie Dynamics Comparison",
                  y=1.02, fontsize=10, fontweight="bold")
     plt.tight_layout()
     for fmt in ["pdf", "png"]:

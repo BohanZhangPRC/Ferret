@@ -65,8 +65,8 @@ WEIGHT_DECAY = 1e-6             # AdamW weight decay
 GRAD_CLIP = 1.0                 # gradient clipping norm
 TEMPERATURE = 1.5               # InfoNCE temperature (matched to CEBRA baseline for fair comparison)
 MIN_EPOCH_TIMEPOINTS = 200      # minimum timepoints per epoch
-MIN_EPOCHS_PER_COND = 1         # minimum epochs per condition
-N_SHUFFLES = 50                 # shuffle realizations for null controls (inference-grade)
+MIN_EPOCHS_PER_COND = 1         # minimum epochs per condition (E2E internally requires >=2 for train/val)
+N_SHUFFLES = 50                 # shuffle realizations (screening null; >=500 for formal inference)
 TRAIN_VAL_SPLIT = 0.8           # fraction of epochs for training (remainder held-out)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 RANDOM_SEED = 42                # base seed for reproducibility

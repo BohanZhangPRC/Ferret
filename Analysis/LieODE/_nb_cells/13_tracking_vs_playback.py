@@ -173,7 +173,7 @@ if e2e_df is not None:
         axes[1].set_title("R2_drive: TR vs PB")
         axes[1].legend(fontsize=5)
 
-    plt.suptitle("End-to-End Lie-ODE -- Session Metrics",
+    plt.suptitle("End-to-End Lie Dynamics -- Session Metrics",
                  y=1.02, fontsize=9, fontweight="bold")
     plt.tight_layout()
     for fmt in ["pdf", "png"]:

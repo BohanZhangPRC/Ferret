@@ -93,7 +93,7 @@ class Dissipation(nn.Module):
 
 
 class LieODECell(nn.Module):
-    """Lie-ODE transition cell: dz/dt = (J(u_t) + L) @ z.
+    """Lie dynamics transition cell: dz/dt = (J(u_t) + L) @ z.
 
     Supports two transition modes:
     - discrete: z_{t+1} = matrix_exp(dt * (J(u_t) + L)) @ z_t

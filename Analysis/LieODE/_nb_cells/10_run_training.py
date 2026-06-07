@@ -17,7 +17,7 @@ else:
 train_indices = np.random.choice(n_sessions_available, size=n_train, replace=False)
 train_indices = sorted(train_indices)
 print(f"Training on {n_train}/{n_sessions_available} sessions "
-      f"(indices: {train_indices.tolist()})")
+      f"(indices: {train_indices})")
 print(f"Seeds per session: {N_SEEDS}")
 print(f"Validation scales: {VAL_ROLLOUT_LENS} bins")
 

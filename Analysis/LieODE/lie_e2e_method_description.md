@@ -13,7 +13,7 @@ The original pipeline (`Skieur_LieAlgebra_CEBRA.ipynb`) operates in two separate
 
 $$\frac{dz}{dt} = J_{\mathrm{skew}} \cdot z \cdot x(t) + L \cdot z$$
 
-via OLS regression with post-hoc skew-symmetrisation ($J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^{T}\bigr)$).
+via OLS regression with post-hoc skew-symmetrisation $J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^{T}\bigr)$.
 
 This two-stage approach carries several structural limitations (documented in `lie_algebra_method_description.md` §12):
 

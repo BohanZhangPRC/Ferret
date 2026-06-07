@@ -13,14 +13,14 @@ The original pipeline (`Skieur_LieAlgebra_CEBRA.ipynb`) operates in two separate
 
 $$\frac{dz}{dt} = J_{\mathrm{skew}} \cdot z \cdot x(t) + L \cdot z$$
 
-via OLS regression with post-hoc skew-symmetrisation ($J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T\bigr)$).
+via OLS regression with post-hoc skew-symmetrisation ($J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^{T}\bigr)$).
 
 This two-stage approach carries several structural limitations (documented in `lie_algebra_method_description.md` §12):
 
 | Limitation | Consequence |
 |-----------|-------------|
 | **Circular reasoning** (§12.2) | CEBRA embedding is shaped by $x(t)$; the Lie algebra is then fit using the same $x(t)$. High SR may be an algorithmic artefact. |
-| **Post-hoc projection** (§12.2, 13.2) | $J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^T\bigr)$ is the projection of the unconstrained optimum, not the constrained optimum. |
+| **Post-hoc projection** (§12.2, 13.2) | $J_{\mathrm{skew}} = {\frac{1}{2}}\bigl(J_{\mathrm{ols}} - {J_{\mathrm{ols}}}^{T}\bigr)$ is the projection of the unconstrained optimum, not the constrained optimum. |
 | **Finite-difference noise** (§13.3) | $\frac{dz}{dt}$ is estimated via `np.gradient`, amplifying high-frequency noise. |
 | **Scalar linear gating** (§12.8) | $J_{\mathrm{skew}} \cdot x(t)$ assumes a single behavioural variable linearly gates one fixed rotation generator. |
 | **Missing Dummy-CEBRA control** (§9) | No negative control where CEBRA is trained on shuffled labels, leaving the possibility that any contrastive embedding produces apparent rotational structure. |

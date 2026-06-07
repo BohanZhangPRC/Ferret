@@ -153,13 +153,15 @@ for idx in tqdm(train_indices, desc="Joint Training"):
 
         # Post-hoc OLS Lie fit on frozen λ=0 embedding (per-condition)
         for val, cond_name in [(0.0, "Tracking"), (1.0, "Playback")]:
-            epochs_n, epochs_l, _ = extract_epochs(
-                n_data_session, f_df, val, dt, label_col="Velocity_x")
+            epochs_n, _, _ = extract_epochs(
+                n_data_session, f_df, val, dt, label_col=CEBRA_LABEL)
             if not epochs_n:
                 continue
-            # Pool condition epochs, encode, OLS fit
+            # Drive labels for OLS (from DRIVE_KEYS[0], not CEBRA_LABEL)
+            _, drive_l, _ = extract_epochs(
+                n_data_session, f_df, val, dt, label_col=DRIVE_KEYS[0])
             ep_cat = np.concatenate(epochs_n, axis=0)
-            lab_cat = np.concatenate(epochs_l, axis=0)
+            lab_cat = np.concatenate(drive_l, axis=0)
             with torch.no_grad():
                 emb_cat = model_abl.encode(
                     torch.tensor(ep_cat, dtype=torch.float32, device=DEVICE)

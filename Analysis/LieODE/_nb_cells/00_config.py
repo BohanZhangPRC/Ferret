@@ -53,7 +53,11 @@ ODE_METHOD = "rk4"              # "rk4" or "dopri5" (only if USE_ODE=True; exper
 LAMBDA_DYN = 0.1                # dynamics loss weight
 LAMBDA_DYN_WARMUP = 200         # steps of lambda=0 warmup before ramping
 CONSTRAINED_L = False           # True: L = -C@C.T (stable dissipation); False: unconstrained
-DRIVE_KEYS = ["Velocity_x"]     # drive features (extendable)
+CEBRA_LABEL = "Velocity_x"      # column for InfoNCE contrastive labels
+DRIVE_KEYS = ["Velocity_x"]     # drive features for dynamics u(t)
+# When CEBRA_LABEL != DRIVE_KEYS[0]: decoupled mode — embedding shaped by one
+# signal, dynamics driven by another.  E.g. CEBRA_LABEL="Played_frequency"
+# tests whether motor drive produces rotation in a sensory-context embedding.
 ENCODER_HIDDEN = [128, 64]      # encoder hidden channel sizes
 CONTROL_HIDDEN = [32]           # control net hidden sizes
 MINI_TRAJ_LEN = 20              # mini-trajectory length in bins (~100ms at dt=0.005)
@@ -120,7 +124,10 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 print(f"Device: {DEVICE}")
 print(f"D_LATENT={D_LATENT}, USE_ODE={USE_ODE}, LAMBDA_DYN={LAMBDA_DYN}")
 print(f"DRIVE_KEYS={DRIVE_KEYS}, CONSTRAINED_L={CONSTRAINED_L}")
-print(f"TEMPERATURE={TEMPERATURE}, N_SHUFFLES={N_SHUFFLES}, N_SEEDS={N_SEEDS}")
+print(f"CEBRA_LABEL={CEBRA_LABEL}, TEMPERATURE={TEMPERATURE}")
+print(f"N_SHUFFLES={N_SHUFFLES}, N_SEEDS={N_SEEDS}")
 print(f"VAL_ROLLOUT_LENS={VAL_ROLLOUT_LENS} bins (multi-scale)")
 print(f"N_TRAIN_SESSIONS={'all' if N_TRAIN_SESSIONS is None else N_TRAIN_SESSIONS}")
+if CEBRA_LABEL != DRIVE_KEYS[0]:
+    print(f"  *** Decoupled mode: InfoNCE label={CEBRA_LABEL}, dynamics drive={DRIVE_KEYS[0]} ***")
 print("Cell 0 -- Config ready.")

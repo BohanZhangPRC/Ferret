@@ -29,7 +29,7 @@ if HAS_CEBRA:
         skip_session = False
         for val, label in [(0.0, "Tracking"), (1.0, "Playback")]:
             epochs_n, epochs_l, n_ep = extract_epochs(
-                n_data_session, f_df, val, dt, label_col="Velocity_x")
+                n_data_session, f_df, val, dt, label_col=CEBRA_LABEL)
             # Filter short epochs
             valid_idx = [i for i in range(len(epochs_n))
                          if epochs_n[i].shape[0] >= MIN_EPOCH_TIMEPOINTS]

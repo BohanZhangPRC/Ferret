@@ -190,31 +190,44 @@ def train_one_session(model, n_data_session, f_df, session_idx,
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=n_epochs_train, eta_min=1e-5)
 
-    # Extract epochs for both conditions
+    # ---- Epoch extraction ----
+    # Step 1: extract drive labels for standardization (DRIVE_KEYS[0])
+    # Step 2: extract CEBRA labels for InfoNCE (CEBRA_LABEL)
+    # When CEBRA_LABEL == DRIVE_KEYS[0], this is one extraction used for both.
+    # When decoupled (e.g. CEBRA_LABEL="Played_frequency"), the embedding is
+    # shaped by sensory context while dynamics are driven by motor command.
     cond_data = {}
-    # Collect all labels first for per-session standardization
-    all_labels_session = []
+    all_drive_labels = []
     for val, label in [(0.0, "Tracking"), (1.0, "Playback")]:
-        epochs_n, epochs_l, _ = extract_epochs(
-            n_data_session, f_df, val, dt, label_col="Velocity_x")
-        all_labels_session.extend(epochs_l)
+        _, drive_l, _ = extract_epochs(
+            n_data_session, f_df, val, dt, label_col=DRIVE_KEYS[0])
+        all_drive_labels.extend(drive_l)
 
-    # Standardize labels per session (they ARE the drive when DRIVE_KEYS=["Velocity_x"])
-    if all_labels_session:
-        lab_cat = np.concatenate(all_labels_session)
-        mu_l, std_l = np.mean(lab_cat), np.std(lab_cat)
+    # Standardize drive labels (pooled TR+PB)
+    if all_drive_labels:
+        drv_cat = np.concatenate(all_drive_labels)
+        mu_l, std_l = np.mean(drv_cat), np.std(drv_cat)
     else:
         mu_l, std_l = 0.0, 1.0
     if std_l < 1e-9:
         std_l = 1.0
 
     for val, label in [(0.0, "Tracking"), (1.0, "Playback")]:
+        # CEBRA labels (for InfoNCE)
         epochs_n, epochs_l, _ = extract_epochs(
-            n_data_session, f_df, val, dt, label_col="Velocity_x")
-        # Use standardized labels as drive (correctly aligned + TAU_SHIFT-trimmed)
-        # Reshape to (T, 1) for single-drive ControlNet input
+            n_data_session, f_df, val, dt, label_col=CEBRA_LABEL)
+        # Drive labels (for dynamics u(t))
+        _, drive_l, _ = extract_epochs(
+            n_data_session, f_df, val, dt, label_col=DRIVE_KEYS[0])
+        # Sanity check: same epoch count and lengths as CEBRA extraction
+        assert len(drive_l) == len(epochs_l), \
+            f"Mismatch: {len(drive_l)} drive epochs vs {len(epochs_l)} CEBRA epochs"
+        for i in range(len(epochs_l)):
+            assert len(drive_l[i]) == len(epochs_l[i]), \
+                f"Epoch {i}: drive len {len(drive_l[i])} vs CEBRA len {len(epochs_l[i])}"
+
         drive_epochs = [((el - mu_l) / std_l).reshape(-1, 1).astype(np.float32)
-                        for el in epochs_l]
+                        for el in drive_l]
         valid_idx = [i for i in range(len(epochs_n))
                      if epochs_n[i].shape[0] >= MINI_TRAJ_LEN]
         cond_data[label] = {

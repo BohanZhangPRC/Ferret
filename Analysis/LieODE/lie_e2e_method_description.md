@@ -60,7 +60,7 @@ The encoder accepts both `(T, N)` and `(B, T, N)` inputs, handling single-trajec
 
 #### Skew-Symmetric Basis (SkewBasis)
 
-$D(D-1)/2$ fixed orthonormal skew-symmetric basis matrices $G_k \in \mathbb{R}^{D \times D}$, each satisfying $G_k^T = -G_k$, $\|G_k\|_F = 1$, and $\langle G_i, G_j \rangle_F = \delta_{ij}$. These span the Lie algebra $\mathfrak{so}(D)$.
+$D(D-1)/2$ fixed orthonormal skew-symmetric basis matrices $G_k \in \mathbb{R}^{D \times D}$, each satisfying $G_k^T = -G_k$, $\lVert G_k\rVert_F = 1$, and $\langle G_i, G_j \rangle_F = \delta_{ij}$. These span the Lie algebra $\mathfrak{so}(D)$.
 
 The basis is constructed with exactly two non-zero entries per matrix: $G_k[i,j] = 1/\sqrt{2}$, $G_k[j,i] = -1/\sqrt{2}$.
 

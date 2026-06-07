@@ -28,31 +28,29 @@ if e2e_df is not None and baseline_df is not None:
           Eig_Imag_baseline=("Eig_Imag_Mean", "mean")).reset_index()
 
     # Use empirical pooled SR (average of TR/PB condition-specific SR) when available
+    e2e_cols = ["Session_Idx", "Headstage", "SR", "Eig_Real_Mean",
+                "Eig_Imag_Mean", "Loss_final"]
     if 'SR_Tracking' in e2e_session_df.columns and 'SR_Playback' in e2e_session_df.columns:
+        e2e_session_df = e2e_session_df.copy()
         e2e_session_df['SR_empirical'] = e2e_session_df[['SR_Tracking','SR_Playback']].mean(axis=1)
+        e2e_cols.append('SR_empirical')
 
     compare_sr = baseline_session.merge(
-        e2e_session_df[["Session_Idx", "Headstage", "SR", "Eig_Real_Mean",
-                        "Eig_Imag_Mean", "Loss_final"]],
-        on=["Session_Idx", "Headstage"],
+        e2e_session_df[e2e_cols], on=["Session_Idx", "Headstage"],
         suffixes=("", "_e2e"))
 
-    # Add empirical pooled SR if available
-    sr_e2e_col = 'SR_empirical' if 'SR_empirical' in e2e_session_df.columns else 'SR'
+    sr_e2e_col = 'SR_empirical' if 'SR_empirical' in compare_sr.columns else 'SR'
 
     print(f"Session-level merge: {len(compare_sr)} sessions")
     print()
     print("--- Skewness Ratio ---")
     print(f"  Baseline SR (OLS post-hoc):    {compare_sr['SR_baseline'].mean():.4f}")
     print(f"  E2E SR (random-drive diag):    {compare_sr['SR'].mean():.4f}")
-    if 'SR_empirical' in e2e_session_df.columns:
-        compare_sr['SR_empirical'] = e2e_session_df['SR_empirical'].values
+    if 'SR_empirical' in compare_sr.columns:
         print(f"  E2E SR (empirical pooled):     {compare_sr['SR_empirical'].mean():.4f}")
-        t_sr, p_sr = ttest_rel(compare_sr["SR_baseline"], compare_sr["SR_empirical"])
-    else:
-        t_sr, p_sr = ttest_rel(compare_sr["SR_baseline"], compare_sr["SR"])
     if len(compare_sr) > 1:
-        print(f"  Paired t-test (Baseline vs E2E empirical): t={t_sr:.3f}, p={p_sr:.4f}")
+        t_sr, p_sr = ttest_rel(compare_sr["SR_baseline"], compare_sr[sr_e2e_col])
+        print(f"  Paired t-test (Baseline vs E2E): t={t_sr:.3f}, p={p_sr:.4f}")
 
     print()
     print("--- Eigenvalues (per-session diagnostics, NOT cross-session averages) ---")
@@ -115,24 +113,27 @@ if e2e_df is not None and baseline_df is not None:
     # --- Visualization ---
     fig, axes = plt.subplots(2, 3, figsize=(10, 6))
 
-    # Row 1, col 1-2: SR scatter per session
-    axes[0, 0].scatter(compare_sr["SR_baseline"], compare_sr["SR"],
+    # Row 1, col 1-2: SR scatter per session (E2E uses empirical pooled SR)
+    axes[0, 0].scatter(compare_sr["SR_baseline"], compare_sr[sr_e2e_col],
                        c="#440154", s=25, alpha=0.7)
     lims_sr = [0, 1]
     axes[0, 0].plot(lims_sr, lims_sr, '--', c='gray', lw=0.8)
     axes[0, 0].set_xlim(lims_sr); axes[0, 0].set_ylim(lims_sr)
-    axes[0, 0].set_xlabel("SR (Baseline)"); axes[0, 0].set_ylabel("SR (E2E)")
+    axes[0, 0].set_xlabel("SR (Baseline OLS)")
+    axes[0, 0].set_ylabel(f"SR (E2E {sr_e2e_col})")
     axes[0, 0].set_title("SR: Baseline vs E2E (per session)")
     if len(compare_sr) > 1:
-        t, p = ttest_rel(compare_sr["SR_baseline"], compare_sr["SR"])
+        t, p = ttest_rel(compare_sr["SR_baseline"], compare_sr[sr_e2e_col])
         axes[0, 0].text(0.05, 0.95, f"t={t:.2f}, p={p:.3f}",
                         transform=axes[0, 0].transAxes, fontsize=6, va='top')
 
-    # Row 1, col 2: SR bar
+    # Row 1, col 2: SR bar (E2E uses empirical pooled SR)
     sr_bar = pd.DataFrame({
         "Pipeline": ["Baseline", "E2E"],
-        "SR": [compare_sr["SR_baseline"].mean(), compare_sr["SR"].mean()],
-        "SEM": [compare_sr["SR_baseline"].sem(), compare_sr["SR"].sem()],
+        "SR": [compare_sr["SR_baseline"].mean(),
+               compare_sr[sr_e2e_col].mean()],
+        "SEM": [compare_sr["SR_baseline"].sem(),
+                compare_sr[sr_e2e_col].sem()],
     })
     axes[0, 1].bar(["Baseline", "E2E"], sr_bar["SR"],
                    yerr=sr_bar["SEM"], color=["#440154", "#21918c"],

@@ -69,6 +69,7 @@ MIN_EPOCHS_PER_COND = 1         # minimum epochs per condition (E2E internally r
 N_SHUFFLES = 50                 # shuffle realizations (screening null; >=500 for formal inference)
 TRAIN_VAL_SPLIT = 0.8           # fraction of epochs for training (remainder held-out)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+CEBRA_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"  # CEBRA may need separate device
 RANDOM_SEED = 42                # base seed for reproducibility
 N_TRAIN_SESSIONS = None         # None = use all available sessions
 N_SEEDS = 3                     # number of random seeds per session (report seed variance)

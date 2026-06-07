@@ -258,7 +258,7 @@ def train_one_session(model, n_data_session, f_df, session_idx,
             'd': cd['d'][n_train:],
         }
 
-    if n_skipped_val >= 2 or not all_train_n:
+    if n_skipped_val > 0 or not all_train_n:
         print(f"  Session {session_idx}: insufficient epochs for train/val, skipping")
         return model, {}, {}
 

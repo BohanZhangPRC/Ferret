@@ -58,7 +58,7 @@ if HAS_CEBRA:
                 max_iterations=CEBRA_LIE_ITERS, batch_size=2048,
                 learning_rate=3e-4, temperature=1.5,
                 distance=CEBRA_DISTANCE,
-                conditional="time_delta", device="cuda", verbose=False)
+                conditional="time_delta", device=CEBRA_DEVICE, verbose=False)
             cebra_true.fit(all_epochs, all_labels)
             loss_true = float(cebra_true.state_dict_['loss'][-1])
         except Exception as e:
@@ -78,7 +78,7 @@ if HAS_CEBRA:
                 max_iterations=CEBRA_LIE_ITERS, batch_size=2048,
                 learning_rate=3e-4, temperature=1.5,
                 distance=CEBRA_DISTANCE,
-                conditional="time_delta", device="cuda", verbose=False)
+                conditional="time_delta", device=CEBRA_DEVICE, verbose=False)
             cebra_dummy.fit(all_epochs, all_labels_shuf)
         except Exception as e:
             print(f"  Session {idx} Dummy CEBRA failed: {e}")

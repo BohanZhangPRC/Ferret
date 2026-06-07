@@ -61,6 +61,11 @@ for idx in tqdm(train_indices, desc="Joint Training"):
         model, history, val_metrics = train_one_session(
             model, n_data_session, f_df, idx)
 
+        if not history or not val_metrics:
+            print(f"  Session {idx}, seed {seed}: skipped (no valid train/val data)")
+            del model; gc.collect(); torch.cuda.empty_cache()
+            continue
+
         e2e_histories.append(history)
         J_avg, L_mat, sr, re, im = model.get_generator_matrices()
         seed_sr.append(sr)

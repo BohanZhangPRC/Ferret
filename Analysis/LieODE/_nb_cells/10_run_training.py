@@ -32,12 +32,20 @@ for idx in tqdm(train_indices, desc="Joint Training"):
     n_neurons = n_data_session.shape[0]
     d_drive = len(DRIVE_KEYS)
 
+    # ---- Pre-compute pooled TR+PB standardization (matching training) ----
+    all_v = np.concatenate([
+        f_df[f_df["Condition"] == val]["Velocity_x"].values
+        for val in [0.0, 1.0]])
+    mu_pool, std_pool = np.mean(all_v), np.std(all_v)
+    if std_pool < 1e-9: std_pool = 1.0
+
     # ---- Multi-scale R2_drive accumulator (averaged across seeds) ----
     seed_r2d = {cond: {s: [] for s in VAL_ROLLOUT_LENS}
                 for cond in ["Tracking", "Playback"]}
     seed_r2d_sh = {cond: {s: [] for s in VAL_ROLLOUT_LENS}
                    for cond in ["Tracking", "Playback"]}
     seed_sr, seed_eig_r, seed_eig_i = [], [], []
+    seed_sr_tr, seed_sr_pb = [], []  # per-condition SR
     seed_losses = []
 
     for seed in range(N_SEEDS):
@@ -72,30 +80,27 @@ for idx in tqdm(train_indices, desc="Joint Training"):
                 seed_r2d_sh[cond_name][wlen].append(
                     r2d_sh_dict.get(wlen, float('nan')))
 
-        # ---- Per-condition SR (condition-specific drive distribution) ----
-        # The shared generator has ONE L but J(u) varies with drive via ControlNet.
-        # We compute SR_TR = E_{u~TR}[||J(u)||/(||J(u)||+||L||)] and same for PB.
-        sr_cond = {}
+        # ---- Per-condition SR (pooled standardization, accumulated across seeds) ----
         with torch.no_grad():
             L_np = model.lie_cell.dissipation.get_L_numpy()
             L_fro = np.linalg.norm(L_np)
             for val, cond_name in [(0.0, "Tracking"), (1.0, "Playback")]:
-                # Sample drives from this condition's raw data
                 v_cond = f_df[f_df["Condition"] == val]["Velocity_x"].values
                 if len(v_cond) > 100:
-                    # Standardize (matching training)
-                    v_std = (v_cond - np.mean(v_cond)) / (np.std(v_cond) + 1e-9)
+                    v_std = (v_cond - mu_pool) / std_pool  # pooled standardization
                     u_samples = torch.tensor(
-                        v_std[:1000].reshape(-1, 1),  # up to 1000 samples
+                        v_std[:1000].reshape(-1, 1),
                         dtype=torch.float32, device=DEVICE)
                     _, J_samples, _ = model.lie_cell.compute_generator(u_samples)
                     J_np = J_samples.cpu().numpy()
                     sr_vals = [np.linalg.norm(J_np[k]) /
                                (np.linalg.norm(J_np[k]) + L_fro + 1e-9)
                                for k in range(len(J_np))]
-                    sr_cond[cond_name] = float(np.mean(sr_vals))
+                    (seed_sr_tr if cond_name == "Tracking" else seed_sr_pb).append(
+                        float(np.mean(sr_vals)))
                 else:
-                    sr_cond[cond_name] = float('nan')
+                    (seed_sr_tr if cond_name == "Tracking" else seed_sr_pb).append(
+                        float('nan'))
 
         del model; gc.collect(); torch.cuda.empty_cache()
 
@@ -104,8 +109,8 @@ for idx in tqdm(train_indices, desc="Joint Training"):
         "Subject": "SKIEUR", "Session_Idx": idx, "Headstage": hs_label,
         "Space": "E2E_LieDynamics", "D_LATENT": D_LATENT,
         "SR": np.mean(seed_sr), "SR_sem": np.std(seed_sr) / max(1, N_SEEDS)**0.5,
-        "SR_Tracking": sr_cond.get("Tracking", float('nan')),
-        "SR_Playback": sr_cond.get("Playback", float('nan')),
+        "SR_Tracking": np.mean(seed_sr_tr) if seed_sr_tr else float('nan'),
+        "SR_Playback": np.mean(seed_sr_pb) if seed_sr_pb else float('nan'),
         "Eig_Real_Mean": np.mean(seed_eig_r), "Eig_Imag_Mean": np.mean(seed_eig_i),
         "Loss_final": np.mean(seed_losses),
         "N_Seeds": N_SEEDS, "N_Neurons": n_neurons,
@@ -125,7 +130,11 @@ for idx in tqdm(train_indices, desc="Joint Training"):
                 "R2_drive_shuffle": np.mean(r2_sh_vals) if r2_sh_vals else float('nan'),
             })
 
-    # ---- lambda_dyn=0 ablation (single seed, same session) ----
+    # ---- lambda_dyn=0 ablation: post-hoc OLS Lie on frozen embedding ----
+    # The encoder from λ=0 training has NOT seen the dynamics constraint.
+    # Post-hoc OLS Lie fit asks: does InfoNCE alone produce rotational
+    # embedding structure, without the Lie loss?  If SR_ols_abl ≈ SR_e2e,
+    # the rotation comes from InfoNCE, not from the dynamics constraint.
     if DO_ABLATION:
         torch.manual_seed(RANDOM_SEED + idx * 100)
         np.random.seed(RANDOM_SEED + idx * 100)
@@ -133,17 +142,33 @@ for idx in tqdm(train_indices, desc="Joint Training"):
                                  constrained_L=CONSTRAINED_L,
                                  use_ode=USE_ODE, ode_method=ODE_METHOD)
         model_abl.to(DEVICE)
-        # Train with lambda_dyn=0 (no dynamics constraint)
         model_abl, hist_abl, _ = train_one_session(
             model_abl, n_data_session, f_df, idx,
             lambda_dyn=0.0, lambda_warmup=0)
-        J_a, L_a, sr_a, re_a, im_a = model_abl.get_generator_matrices()
-        ablation_results.append({
-            "Session_Idx": idx, "Headstage": hs_label,
-            "SR_lambda0": sr_a,
-            "Loss_final": hist_abl['loss_total'][-1]
-            if hist_abl['loss_total'] else float('nan'),
-        })
+
+        # Post-hoc OLS Lie fit on frozen λ=0 embedding (per-condition)
+        for val, cond_name in [(0.0, "Tracking"), (1.0, "Playback")]:
+            epochs_n, epochs_l, _ = extract_epochs(
+                n_data_session, f_df, val, dt, label_col="Velocity_x")
+            if not epochs_n:
+                continue
+            # Pool condition epochs, encode, OLS fit
+            ep_cat = np.concatenate(epochs_n, axis=0)
+            lab_cat = np.concatenate(epochs_l, axis=0)
+            with torch.no_grad():
+                emb_cat = model_abl.encode(
+                    torch.tensor(ep_cat, dtype=torch.float32, device=DEVICE)
+                ).cpu().numpy()
+            J_s, sr_ols, r2, J_ols, r2d = fit_lie_algebra_with_leak(emb_cat, lab_cat)
+            re_ols, im_ols = compute_eigenvalue_metrics(J_ols)
+            ablation_results.append({
+                "Session_Idx": idx, "Headstage": hs_label,
+                "Condition": cond_name,
+                "SR_lambda0_ols": sr_ols,
+                "R2_drive_lambda0_ols": r2d,
+                "Eig_Real_lambda0": re_ols,
+                "Eig_Imag_lambda0": im_ols,
+            })
         del model_abl; gc.collect(); torch.cuda.empty_cache()
 
 e2e_df = pd.DataFrame(e2e_results)
@@ -161,19 +186,30 @@ r2_pivot = e2e_df.pivot_table(
     aggfunc="mean").round(6)
 print(r2_pivot.to_string())
 
-# --- lambda_dyn=0 ablation summary ---
+# --- lambda_dyn=0 ablation summary (post-hoc OLS on frozen embedding) ---
 if ablation_df is not None:
-    print("\n--- lambda_dyn=0 Ablation ---")
-    merged_abl = e2e_session_df.merge(ablation_df, on=["Session_Idx", "Headstage"])
-    print(f"  SR (lambda={LAMBDA_DYN}): {merged_abl['SR'].mean():.4f} "
-          f"± {merged_abl['SR'].sem():.4f}")
-    print(f"  SR (lambda=0):          {merged_abl['SR_lambda0'].mean():.4f} "
-          f"± {merged_abl['SR_lambda0'].sem():.4f}")
-    if len(merged_abl) > 1:
-        t_abl, p_abl = ttest_rel(merged_abl["SR"], merged_abl["SR_lambda0"])
-        print(f"  Paired t-test: t={t_abl:.3f}, p={p_abl:.4f}")
-    print(f"  (If SR survives without dynamics loss, rotation comes from InfoNCE, "
-          f"not from the Lie constraint.)")
+    print("\n--- lambda_dyn=0 Ablation (post-hoc OLS Lie on frozen embedding) ---")
+    # Compare E2E R2_drive vs OLS R2_drive on λ=0 embedding (shortest window)
+    e2e_short = e2e_df[e2e_df["Window_Bins"] == VAL_ROLLOUT_LENS[0]]
+    merged_abl = e2e_short.merge(ablation_df, on=["Session_Idx", "Condition"])
+    for cond in ["Tracking", "Playback"]:
+        sub = merged_abl[merged_abl["Condition"] == cond]
+        print(f"  {cond}: R2_drive_E2E={sub['R2_drive_rollout'].mean():.6f}, "
+              f"R2_drive_OLS_λ=0={sub['R2_drive_lambda0_ols'].mean():.6f}, "
+              f"SR_E2E={e2e_session_df['SR'].mean():.4f}, "
+              f"SR_OLS_λ=0={sub['SR_lambda0_ols'].mean():.4f}")
+    # Paired test on R2_drive: E2E vs post-hoc OLS
+    common = merged_abl.dropna(subset=["R2_drive_rollout", "R2_drive_lambda0_ols"])
+    if len(common) > 1:
+        t_a, p_a = ttest_rel(common["R2_drive_rollout"],
+                             common["R2_drive_lambda0_ols"])
+        print(f"  Paired R2_drive (E2E vs OLS_λ=0): t={t_a:.3f}, p={p_a:.4f}")
+        if p_a < 0.05:
+            print(f"  -> Dynamics constraint significantly improves R2_drive over")
+            print(f"     InfoNCE-only embedding. Rotation is NOT just an InfoNCE artifact.")
+        else:
+            print(f"  -> No significant difference: InfoNCE alone may produce comparable")
+            print(f"     rotational structure. The dynamics constraint adds little.")
 
 # --- Loss curves (first 5 session-seed pairs) ---
 fig, axes = plt.subplots(1, 3, figsize=(10, 3))

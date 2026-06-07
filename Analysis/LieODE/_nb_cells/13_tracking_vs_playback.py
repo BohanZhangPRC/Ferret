@@ -120,19 +120,22 @@ if e2e_df is not None:
         print()
 
     # ---- Per-condition R2_drive: Tracking vs Playback ----
-    pivot_e2e = e2e_df.pivot_table(
-        values=["R2_drive_rollout"],
-        index=["Subject", "Session_Idx", "Headstage"],
-        columns="Condition").dropna()
+    # Stratify by Window_Bins: each horizon gets its own paired test
+    for wlen in VAL_ROLLOUT_LENS:
+        sub = e2e_df[e2e_df["Window_Bins"] == wlen]
+        pivot_e2e = sub.pivot_table(
+            values=["R2_drive_rollout"],
+            index=["Subject", "Session_Idx", "Headstage"],
+            columns="Condition").dropna()
 
     if len(pivot_e2e) > 1:
-        print("--- R2_drive (held-out rollout) ---")
-        for metric in ["R2_drive_rollout"]:
-            tr = pivot_e2e[metric]["Tracking"].values
-            pb = pivot_e2e[metric]["Playback"].values
-            t, p = ttest_rel(tr, pb)
-            print(f"  Tracking: {np.mean(tr):.6f}, Playback: {np.mean(pb):.6f}, "
-                  f"t={t:.3f}, p={p:.4f}")
+            print(f"    {wlen} bins ({wlen*dt*1000:.0f}ms): ", end="")
+            for metric in ["R2_drive_rollout"]:
+                tr = pivot_e2e[metric]["Tracking"].values
+                pb = pivot_e2e[metric]["Playback"].values
+                t, p = ttest_rel(tr, pb)
+                print(f"TR={np.mean(tr):.6f}, PB={np.mean(pb):.6f}, "
+                      f"t={t:.3f}, p={p:.4f}")
     else:
         print("  Not enough paired sessions for R2_drive t-test.")
 

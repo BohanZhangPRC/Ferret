@@ -223,10 +223,14 @@ def train_one_session(model, n_data_session, f_df, session_idx,
             'd': [drive_epochs[i] for i in valid_idx]
         }
 
-    # Warn if DRIVE_KEYS has more than Velocity_x (not yet supported in aligned path)
+    # Multi-dim drive not yet implemented in the aligned epoch path.
+    # (Would require per-epoch multi-dim drive extraction with TAU_SHIFT alignment.)
     if len(DRIVE_KEYS) > 1 or DRIVE_KEYS != ["Velocity_x"]:
-        print(f"  WARNING: drive alignment currently uses Velocity_x labels only. "
-              f"DRIVE_KEYS={DRIVE_KEYS} — extra dims ignored.")
+        raise NotImplementedError(
+            f"Multi-dim drive not yet implemented. DRIVE_KEYS={DRIVE_KEYS}. "
+            f"Set DRIVE_KEYS=['Velocity_x'] for now. "
+            f"To implement: extract per-epoch multi-dim drive vectors aligned "
+            f"to epoch boundaries with TAU_SHIFT, matching epochs_l alignment.")
 
     # Train/val split on epochs
     all_train_n, all_train_l, all_train_d = [], [], []

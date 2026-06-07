@@ -121,26 +121,30 @@ if e2e_df is not None:
 
     # ---- Per-condition R2_drive: Tracking vs Playback ----
     # Stratify by Window_Bins: each horizon gets its own paired test
+    # Per-horizon paired t-tests
     for wlen in VAL_ROLLOUT_LENS:
         sub = e2e_df[e2e_df["Window_Bins"] == wlen]
         pivot_e2e = sub.pivot_table(
             values=["R2_drive_rollout"],
             index=["Subject", "Session_Idx", "Headstage"],
             columns="Condition").dropna()
-
-    if len(pivot_e2e) > 1:
+        if len(pivot_e2e) > 1:
             print(f"    {wlen} bins ({wlen*dt*1000:.0f}ms): ", end="")
-            for metric in ["R2_drive_rollout"]:
-                tr = pivot_e2e[metric]["Tracking"].values
-                pb = pivot_e2e[metric]["Playback"].values
-                t, p = ttest_rel(tr, pb)
-                print(f"TR={np.mean(tr):.6f}, PB={np.mean(pb):.6f}, "
-                      f"t={t:.3f}, p={p:.4f}")
-    else:
-        print("  Not enough paired sessions for R2_drive t-test.")
+            tr = pivot_e2e["R2_drive_rollout"]["Tracking"].values
+            pb = pivot_e2e["R2_drive_rollout"]["Playback"].values
+            t, p = ttest_rel(tr, pb)
+            print(f"TR={np.mean(tr):.6f}, PB={np.mean(pb):.6f}, "
+                  f"t={t:.3f}, p={p:.4f}")
+        else:
+            print(f"    {wlen} bins: not enough paired sessions")
 
-    # ---- Visualization ----
+    # ---- Visualization (primary horizon = shortest window) ----
     fig, axes = plt.subplots(1, 2, figsize=(6, 3))
+    sub_primary = e2e_df[e2e_df["Window_Bins"] == VAL_ROLLOUT_LENS[0]]
+    pivot_primary = sub_primary.pivot_table(
+        values=["R2_drive_rollout"],
+        index=["Subject", "Session_Idx", "Headstage"],
+        columns="Condition").dropna()
 
     # Panel A: Session-level SR histogram
     if 'e2e_session_df' in dir() and e2e_session_df is not None:
@@ -152,10 +156,10 @@ if e2e_df is not None:
         axes[0].set_title("SR Distribution (E2E)")
         axes[0].legend(fontsize=5)
 
-    # Panel B: R2_drive Tracking vs Playback paired
-    if len(pivot_e2e) > 1:
-        tr_vals = pivot_e2e["R2_drive_rollout"]["Tracking"].values
-        pb_vals = pivot_e2e["R2_drive_rollout"]["Playback"].values
+    # Panel B: R2_drive Tracking vs Playback paired (primary horizon)
+    if len(pivot_primary) > 1:
+        tr_vals = pivot_primary["R2_drive_rollout"]["Tracking"].values
+        pb_vals = pivot_primary["R2_drive_rollout"]["Playback"].values
         for i in range(len(tr_vals)):
             axes[1].plot([0, 1], [tr_vals[i], pb_vals[i]], '-',
                          c='gray', lw=0.4, alpha=0.5)

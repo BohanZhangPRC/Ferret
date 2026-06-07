@@ -186,6 +186,20 @@ r2_pivot = e2e_df.pivot_table(
     aggfunc="mean").round(6)
 print(r2_pivot.to_string())
 
+# --- SR summary ---
+print("\n--- Skewness Ratio ---")
+print(f"  SR (N(0,1) diagnostic): {e2e_session_df['SR'].mean():.4f} "
+      f"± {e2e_session_df['SR'].sem():.4f}  [from get_generator_matrices, random-drive]")
+if 'SR_Tracking' in e2e_session_df.columns:
+    print(f"  SR_Tracking (empirical):  {e2e_session_df['SR_Tracking'].mean():.4f} "
+          f"± {e2e_session_df['SR_Tracking'].sem():.4f}  [condition-specific drive]")
+    print(f"  SR_Playback (empirical):  {e2e_session_df['SR_Playback'].mean():.4f} "
+          f"± {e2e_session_df['SR_Playback'].sem():.4f}  [condition-specific drive]")
+    common_sr = e2e_session_df[['SR_Tracking', 'SR_Playback']].dropna()
+    if len(common_sr) > 1:
+        t_sr, p_sr = ttest_rel(common_sr['SR_Tracking'], common_sr['SR_Playback'])
+        print(f"  SR TR vs PB paired t-test: t={t_sr:.3f}, p={p_sr:.4f}")
+
 # --- lambda_dyn=0 ablation summary (post-hoc OLS on frozen embedding) ---
 if ablation_df is not None:
     print("\n--- lambda_dyn=0 Ablation (post-hoc OLS Lie on frozen embedding) ---")
@@ -194,16 +208,22 @@ if ablation_df is not None:
     merged_abl = e2e_short.merge(ablation_df, on=["Session_Idx", "Condition"])
     for cond in ["Tracking", "Playback"]:
         sub = merged_abl[merged_abl["Condition"] == cond]
+        sr_col = f"SR_{cond}"
+        sr_e2e_cond = e2e_session_df[sr_col].mean() if sr_col in e2e_session_df.columns else float('nan')
         print(f"  {cond}: R2_drive_E2E={sub['R2_drive_rollout'].mean():.6f}, "
               f"R2_drive_OLS_λ=0={sub['R2_drive_lambda0_ols'].mean():.6f}, "
-              f"SR_E2E={e2e_session_df['SR'].mean():.4f}, "
+              f"SR_E2E={sr_e2e_cond:.4f}, "
               f"SR_OLS_λ=0={sub['SR_lambda0_ols'].mean():.4f}")
-    # Paired test on R2_drive: E2E vs post-hoc OLS
+    # Paired test: average across conditions per session first (not treating
+    # Tracking/Playback from same session as independent)
     common = merged_abl.dropna(subset=["R2_drive_rollout", "R2_drive_lambda0_ols"])
-    if len(common) > 1:
-        t_a, p_a = ttest_rel(common["R2_drive_rollout"],
-                             common["R2_drive_lambda0_ols"])
-        print(f"  Paired R2_drive (E2E vs OLS_λ=0): t={t_a:.3f}, p={p_a:.4f}")
+    session_avg = common.groupby("Session_Idx")[
+        ["R2_drive_rollout", "R2_drive_lambda0_ols"]].mean()
+    if len(session_avg) > 1:
+        t_a, p_a = ttest_rel(session_avg["R2_drive_rollout"],
+                             session_avg["R2_drive_lambda0_ols"])
+        print(f"  Paired R2_drive (E2E vs OLS_λ=0, per-session avg): "
+              f"t={t_a:.3f}, p={p_a:.4f}")
         if p_a < 0.05:
             print(f"  -> Dynamics constraint significantly improves R2_drive over")
             print(f"     InfoNCE-only embedding. Rotation is NOT just an InfoNCE artifact.")

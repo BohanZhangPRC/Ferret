@@ -56,11 +56,13 @@ if e2e_df is not None and baseline_df is not None:
     print(f"   not comparable across independently-trained sessions.")
     print(f"   Only SR — a scale-invariant ratio — is cross-session comparable.)")
 
-    # ---- Merge per-condition R2_drive ----
-    # baseline_df has R2_drive per condition; e2e_df has R2_drive_rollout per condition
+    # ---- Merge per-condition R2_drive (primary horizon only) ----
+    # baseline_df has R2_drive per condition; e2e_df has multi-scale R2_drive_rollout.
+    # Only the primary (shortest) horizon is used for fair comparison.
+    e2e_primary = e2e_df[e2e_df["Window_Bins"] == VAL_ROLLOUT_LENS[0]]
     compare_r2 = baseline_df[["Subject", "Session_Idx", "Headstage", "Condition",
                                "R2_drive"]].merge(
-        e2e_df[["Session_Idx", "Headstage", "Condition", "R2_drive_rollout"]],
+        e2e_primary[["Session_Idx", "Headstage", "Condition", "R2_drive_rollout"]],
         on=["Session_Idx", "Headstage", "Condition"])
 
     print()

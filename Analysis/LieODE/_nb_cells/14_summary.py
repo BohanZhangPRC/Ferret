@@ -12,7 +12,7 @@ out_path = os.path.join(LIE_OUTPUT_DIR, "LieE2E_summary.txt")
 
 with open(out_path, "w") as f:
     f.write("=" * 70 + "\n")
-    f.write("  SKIEUR End-to-End Lie-ODE -- Summary Report\n")
+    f.write("  SKIEUR End-to-End Lie Dynamics -- Summary Report\n")
     f.write("=" * 70 + "\n")
     f.write(f"  Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     f.write("\n")
@@ -34,12 +34,16 @@ with open(out_path, "w") as f:
     f.write(f"  LAMBDA_DYN          = {LAMBDA_DYN}\n")
     f.write(f"  LAMBDA_DYN_WARMUP   = {LAMBDA_DYN_WARMUP}\n")
     f.write(f"  CONSTRAINED_L       = {CONSTRAINED_L}\n")
+    f.write(f"  TEMPERATURE         = {TEMPERATURE}\n")
     f.write(f"  DRIVE_KEYS          = {DRIVE_KEYS}\n")
     f.write(f"  MINI_TRAJ_LEN       = {MINI_TRAJ_LEN}\n")
+    f.write(f"  VAL_ROLLOUT_LENS    = {VAL_ROLLOUT_LENS}\n")
     f.write(f"  N_EPOCHS_TRAIN      = {N_EPOCHS_TRAIN}\n")
     f.write(f"  BATCH_SIZE          = {BATCH_SIZE}\n")
     f.write(f"  LR                  = {LR}\n")
     f.write(f"  N_SHUFFLES          = {N_SHUFFLES}\n")
+    f.write(f"  N_SEEDS             = {N_SEEDS}\n")
+    f.write(f"  RANDOM_SEED         = {RANDOM_SEED}\n")
     f.write(f"  TRAIN_VAL_SPLIT     = {TRAIN_VAL_SPLIT}\n")
     f.write(f"  DEVICE              = {DEVICE}\n")
     f.write("\n")
@@ -48,9 +52,9 @@ with open(out_path, "w") as f:
     f.write(f"  Headstage 0        : {n_hs0}\n")
     f.write(f"  Headstage 1        : {len(n_data_all) - n_hs0}\n")
     try:
-        f.write(f"  Sessions trained   : {N_TRAIN_SESSIONS}\n")
+        f.write(f"  Sessions trained   : {n_train}\n")
     except NameError:
-        pass
+        f.write(f"  Sessions trained   : {N_TRAIN_SESSIONS if N_TRAIN_SESSIONS is not None else 'all'}\n")
     f.write("\n")
 
     # --- Baseline results ---
@@ -90,40 +94,68 @@ with open(out_path, "w") as f:
 
     # --- End-to-End results ---
     f.write("=" * 70 + "\n")
-    f.write("  3. End-to-End Lie-ODE\n")
+    f.write("  3. End-to-End Lie Dynamics\n")
     f.write("=" * 70 + "\n")
     try:
         if 'e2e_session_df' in dir() and e2e_session_df is not None:
             f.write("--- Session-level Generator Metrics ---\n")
             f.write(f"  N sessions: {len(e2e_session_df)}\n")
-            f.write(f"  Mean SR:           {e2e_session_df['SR'].mean():.4f} "
-                    f"(sem={e2e_session_df['SR'].sem():.4f})\n")
-            f.write(f"  (Eigenvalues are per-session diagnostics in arbitrary\n")
-            f.write(f"   encoder-scale units — not comparable across sessions.\n")
-            f.write(f"   See per-session values in the table below.)\n")
+            f.write(f"  SR (random-drive diagnostic, N(0,1)): "
+                    f"{e2e_session_df['SR'].mean():.4f} "
+                    f"sem={e2e_session_df['SR'].sem():.4f}\n")
+            if 'SR_Tracking' in e2e_session_df.columns:
+                f.write(f"  SR_Tracking (empirical drive):   "
+                        f"{e2e_session_df['SR_Tracking'].mean():.4f} "
+                        f"sem={e2e_session_df['SR_Tracking'].sem():.4f}\n")
+                f.write(f"  SR_Playback (empirical drive):   "
+                        f"{e2e_session_df['SR_Playback'].mean():.4f} "
+                        f"sem={e2e_session_df['SR_Playback'].sem():.4f}\n")
+                common_sr = e2e_session_df[['SR_Tracking','SR_Playback']].dropna()
+                if len(common_sr) > 1:
+                    t_sr, p_sr = ttest_rel(common_sr['SR_Tracking'],
+                                           common_sr['SR_Playback'])
+                    f.write(f"  SR TR vs PB paired t-test: t={t_sr:.3f}, p={p_sr:.4f}\n")
+            f.write(f"  (Eigenvalues are per-session diagnostics — not cross-session comparable)\n")
             f.write(f"  Per-session |Real|: "
                     f"{e2e_session_df['Eig_Real_Mean'].round(4).tolist()}\n")
             f.write(f"  Per-session |Imag|: "
                     f"{e2e_session_df['Eig_Imag_Mean'].round(4).tolist()}\n")
             f.write("\n")
         if e2e_df is not None:
-            f.write("--- Per-Condition R2_drive (held-out rollout) ---\n")
-            grp = e2e_df.groupby("Condition")[["R2_drive_rollout"]].mean().round(6)
-            f.write(grp.to_string() + "\n\n")
-
-            # Paired comparison: R2_drive only
-            pivot_e2e = e2e_df.pivot_table(
+            f.write("--- Multi-scale R2_drive (held-out rollout) ---\n")
+            for wlen in VAL_ROLLOUT_LENS:
+                sub = e2e_df[e2e_df["Window_Bins"] == wlen]
+                grp = sub.groupby("Condition")["R2_drive_rollout"].mean().round(6)
+                f.write(f"  {wlen} bins ({wlen*dt*1000:.0f}ms):\n")
+                f.write(f"    {grp.to_string()}\n")
+            # Primary-horizon paired test
+            sub_p = e2e_df[e2e_df["Window_Bins"] == VAL_ROLLOUT_LENS[0]]
+            pivot_e2e = sub_p.pivot_table(
                 values=["R2_drive_rollout"],
                 index=["Subject", "Session_Idx", "Headstage"],
                 columns="Condition").dropna()
             if len(pivot_e2e) > 1:
-                f.write("  Tracking vs Playback paired t-test (R2_drive):\n")
+                f.write("  Tracking vs Playback (primary horizon):\n")
                 t, p = ttest_rel(pivot_e2e["R2_drive_rollout"]["Tracking"],
                                  pivot_e2e["R2_drive_rollout"]["Playback"])
                 f.write(f"    R2_drive_rollout: t={t:.3f}, p={p:.4f}\n")
             f.write("\n")
-        else:
-            f.write("  (Not run)\n\n")
+        # Ablation
+        if ablation_df is not None:
+            f.write("--- lambda_dyn=0 Ablation (post-hoc OLS on frozen embedding) ---\n")
+            for cond in ["Tracking", "Playback"]:
+                sub_a = ablation_df[ablation_df["Condition"] == cond]
+                f.write(f"  {cond}: SR_OLS={sub_a['SR_lambda0_ols'].mean():.4f}, "
+                        f"R2_drive_OLS={sub_a['R2_drive_lambda0_ols'].mean():.6f}\n")
+            f.write("\n")
+        # Velocity confound
+        try:
+            if 'vel_df' in dir():
+                f.write("--- Velocity Distribution Check ---\n")
+                f.write(vel_df.groupby("Condition")[["RMS","Std","Range"]].mean().round(2).to_string())
+                f.write("\n\n")
+        except NameError:
+            pass
     except NameError:
         f.write("  (Not run)\n\n")
 

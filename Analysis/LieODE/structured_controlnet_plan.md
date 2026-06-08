@@ -332,16 +332,23 @@ def get_generator_matrices(self, n_drive_samples=100):
         # Per-sample SR: ||J(u)|| / (||J(u)|| + ||L||)
         J_norms = torch.norm(J_samples.reshape(n_drive_samples, -1), dim=1)
         L_norm = torch.norm(L)
-        sr_per_sample = J_norms / (J_norms + L_norm + 1e-9)  # (n_samples,)
+        sr_per_sample = J_norms / (J_norms + L_norm + 1e-9)
         sr = sr_per_sample.mean().item()
-        # Representative J (used for eigenvalues only):
-        J_avg = J_samples.mean(dim=0)
-        return J_avg.cpu().numpy(), L.cpu().numpy(), sr
+        # Per-sample eigenvalues (same principle — avoid E[J] ≈ 0)
+        eig_real_samples, eig_imag_samples = [], []
+        for k in range(n_drive_samples):
+            A = J_samples[k] + L
+            eigs = torch.linalg.eigvals(A)
+            eig_real_samples.append(torch.abs(eigs.real).mean().item())
+            eig_imag_samples.append(torch.abs(eigs.imag).mean().item())
+        eig_real = np.mean(eig_real_samples)
+        eig_imag = np.mean(eig_imag_samples)
+        return J_samples.mean(dim=0).cpu().numpy(), L.cpu().numpy(), sr, eig_real, eig_imag
 ```
 
 **Caveat — SR:** With unit-norm gating, $\mathrm{SR}_{\text{per-sample}} = |v|/(|v|+\|L\|)$, making SR purely a function of $|v|$ — see §3.3. With `normalize=False`, $\|J\|$ depends on both $v$ and $f$, making SR informative about learned rotational structure.
 
-**Caveat — eigenvalue degeneracy under zero-mean drive:** `J_avg = J_samples.mean(dim=0)` is approximately the zero matrix when $v$ is zero-mean (standardized), because $J(v,f) = v \cdot \tilde{J}(f)$ is antisymmetric in $v$. The eigenvalues of $J_{\text{avg}} + L$ therefore reflect only the leak term $L$, not the full generator $J(u)+L$. For meaningful eigenvalue reporting, either (a) restrict sampling to $|v| > 0$ (e.g., $|v| > 1$ std), or (b) compute eigenvalues per-sample and report the distribution: $\mathbb{E}_u[|\mathrm{Re}(\lambda(J(u)+L))|]$ and $\mathbb{E}_u[|\mathrm{Im}(\lambda(J(u)+L))|]$. The current implementation reports eigenvalues of $\mathbb{E}[J] + L \approx L$ and should be interpreted with this caveat.
+**Caveat — eigenvalue:** `J_avg = J_samples.mean(dim=0) ≈ 0` under zero-mean $v$, so eigenvalues of $J_{\text{avg}} + L$ reflect only $L$. The per-sample loop above computes $\mathbb{E}_u[|\text{Re}(\lambda(J(u)+L))|]$ and $\mathbb{E}_u[|\text{Im}(\lambda(J(u)+L))|]$ — the expected absolute eigenvalue components over the drive distribution — rather than eigenvalues of the expected generator. For large `n_drive_samples`, use batched `torch.linalg.eigvals` (not in a Python loop) to avoid performance issues.
 
 ### 4.7 Verification Criteria (Revised)
 
@@ -407,7 +414,8 @@ These must be in place before the Structured ControlNet can be tested:
    `drive_mu[dk]`/`drive_std[dk]` dicts), and stacks them via `np.column_stack`.
    Sanity checks assert identical epoch counts and lengths across dimensions.
    **The training path does NOT call `build_drive_vector`** — that function is
-   used only in the OLS baseline path (Cell 4).
+   defined but never called in any code path (dead code; survives only in the
+   Cell 2 "Helpers ready" print string).
    **Status: implemented** (commit `97de7f0`; verified — no `NotImplementedError`
    guard exists for `len(DRIVE_KEYS) > 1`).
 

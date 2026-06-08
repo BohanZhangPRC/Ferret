@@ -339,7 +339,9 @@ def get_generator_matrices(self, n_drive_samples=100):
         return J_avg.cpu().numpy(), L.cpu().numpy(), sr
 ```
 
-**Caveat:** With unit-norm gating, $\mathrm{SR}_{\text{per-sample}} = |v|/(|v|+||L||)$, making SR purely a function of $|v|$ — see §3.3. With `normalize=False`, $||J||$ depends on both $v$ and $f$, making SR informative about learned rotational structure.
+**Caveat — SR:** With unit-norm gating, $\mathrm{SR}_{\text{per-sample}} = |v|/(|v|+\|L\|)$, making SR purely a function of $|v|$ — see §3.3. With `normalize=False`, $\|J\|$ depends on both $v$ and $f$, making SR informative about learned rotational structure.
+
+**Caveat — eigenvalue degeneracy under zero-mean drive:** `J_avg = J_samples.mean(dim=0)` is approximately the zero matrix when $v$ is zero-mean (standardized), because $J(v,f) = v \cdot \tilde{J}(f)$ is antisymmetric in $v$. The eigenvalues of $J_{\text{avg}} + L$ therefore reflect only the leak term $L$, not the full generator $J(u)+L$. For meaningful eigenvalue reporting, either (a) restrict sampling to $|v| > 0$ (e.g., $|v| > 1$ std), or (b) compute eigenvalues per-sample and report the distribution: $\mathbb{E}_u[|\mathrm{Re}(\lambda(J(u)+L))|]$ and $\mathbb{E}_u[|\mathrm{Im}(\lambda(J(u)+L))|]$. The current implementation reports eigenvalues of $\mathbb{E}[J] + L \approx L$ and should be interpreted with this caveat.
 
 ### 4.7 Verification Criteria (Revised)
 
@@ -398,11 +400,16 @@ to quantify the current failure mode:
 These must be in place before the Structured ControlNet can be tested:
 
 1. **Multi-drive per-epoch extraction with TAU_SHIFT alignment.**
-   Currently supported in the notebook via `extract_epochs` called separately
-   for each `DRIVE_KEYS` column (since `extract_macro_epochs` uses Condition
-   boundaries, all extractions produce identical epoch boundaries). The
-   `build_drive_vector` function handles standardization. **Status: implemented
-   in current notebook.**
+   Implemented in commit `97de7f0`: `train_one_session` calls `extract_epochs`
+   separately for each `DRIVE_KEYS` column (since `extract_macro_epochs` uses
+   Condition boundaries, all extractions produce identical epoch boundaries),
+   standardizes each dimension independently (pooled TR+PB via per-dimension
+   `drive_mu[dk]`/`drive_std[dk]` dicts), and stacks them via `np.column_stack`.
+   Sanity checks assert identical epoch counts and lengths across dimensions.
+   **The training path does NOT call `build_drive_vector`** — that function is
+   used only in the OLS baseline path (Cell 4).
+   **Status: implemented** (commit `97de7f0`; verified — no `NotImplementedError`
+   guard exists for `len(DRIVE_KEYS) > 1`).
 
 2. **Decoupled configuration.** Set `CEBRA_LABEL ≠ DRIVE_KEYS[0]` explicitly
    when testing the structured gate, to ensure Trap 1 and Trap 2 fixes are

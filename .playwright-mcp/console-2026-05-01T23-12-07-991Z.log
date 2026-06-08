@@ -1,3 +1,0 @@
-[    6510ms] [WARNING] [Elastic APM] RUM agent is inactive @ https://h5.sinaimg.cn/m/weibo-pro-next/assets/index-CbDo3Zin.js:715
-[    6514ms] [LOG] Exposure Batch Service (Renamed Fields) Initialized. @ https://h5.sinaimg.cn/m/weibo-pro-next/assets/index-CbDo3Zin.js:706
-[    6885ms] [WARNING] The PerformanceObserver does not support buffered flag with the entryTypes argument. @ https://a.sinaimg.cn/mintra/pic/2406250331/48po.js:138

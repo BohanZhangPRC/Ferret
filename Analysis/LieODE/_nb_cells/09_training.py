@@ -194,59 +194,55 @@ def train_one_session(model, n_data_session, f_df, session_idx,
     # For each DRIVE_KEYS column, extract per-epoch values using extract_epochs.
     # Since extract_macro_epochs uses Condition boundaries (not label_col),
     # all extractions produce identical epoch boundaries and lengths.
-    # Standardize each dimension independently (pooled TR+PB).
     cond_data = {}
-    d_drive = len(DRIVE_KEYS)
-
-    # Step 1: collect all drive labels per dimension for standardization
-    all_drive_raw = {key: [] for key in DRIVE_KEYS}
+    all_drive_labels = []
     for val, label in [(0.0, "Tracking"), (1.0, "Playback")]:
-        for dk in DRIVE_KEYS:
-            _, dl, _ = extract_epochs(n_data_session, f_df, val, dt, label_col=dk)
-            all_drive_raw[dk].extend(dl)
+        # Support single or list of drive keys for multi-dim drive
+        label_arg = DRIVE_KEYS if len(DRIVE_KEYS) > 1 else DRIVE_KEYS[0]
+        _, drive_l, _ = extract_epochs(
+            n_data_session, f_df, val, dt, label_col=label_arg)
+        all_drive_labels.extend(drive_l)
 
-    # Per-dimension standardization parameters (pooled TR+PB)
-    drive_mu, drive_std = {}, {}
-    for dk in DRIVE_KEYS:
-        cat = np.concatenate(all_drive_raw[dk]) if all_drive_raw[dk] else np.array([0.])
-        drive_mu[dk], drive_std[dk] = np.mean(cat), np.std(cat)
-        if drive_std[dk] < 1e-9:
-            drive_std[dk] = 1.0
+    # Standardize drive labels (pooled TR+PB)
+    if all_drive_labels:
+        # np.concatenate works for list of 1D or 2D arrays
+        drv_cat = np.concatenate(all_drive_labels, axis=0)
+        mu_l = np.mean(drv_cat, axis=0)
+        std_l = np.std(drv_cat, axis=0)
+        # Avoid division by zero
+        if isinstance(std_l, np.ndarray):
+            std_l[std_l < 1e-9] = 1.0
+        else:
+            if std_l < 1e-9:
+                std_l = 1.0
+    else:
+        mu_l, std_l = 0.0, 1.0
 
-    # Step 2: per-condition extraction + stacking
     for val, label in [(0.0, "Tracking"), (1.0, "Playback")]:
         # CEBRA labels (for InfoNCE)
         epochs_n, epochs_l, _ = extract_epochs(
             n_data_session, f_df, val, dt, label_col=CEBRA_LABEL)
-        # Multi-dim drive: extract each key, stack into (T, d_drive)
-        drive_per_key = {}
-        for dk in DRIVE_KEYS:
-            _, dl, _ = extract_epochs(n_data_session, f_df, val, dt, label_col=dk)
-            drive_per_key[dk] = dl
-        # Sanity checks
-        for dk in DRIVE_KEYS:
-            assert len(drive_per_key[dk]) == len(epochs_l), \
-                f"{dk}: {len(drive_per_key[dk])} epochs vs {len(epochs_l)} CEBRA epochs"
+        # Drive labels (for dynamics u(t))
+        label_arg = DRIVE_KEYS if len(DRIVE_KEYS) > 1 else DRIVE_KEYS[0]
+        _, drive_l, _ = extract_epochs(
+            n_data_session, f_df, val, dt, label_col=label_arg)
+        # Sanity check: same epoch count and lengths as CEBRA extraction
+        assert len(drive_l) == len(epochs_l), \
+            f"Mismatch: {len(drive_l)} drive epochs vs {len(epochs_l)} CEBRA epochs"
         for i in range(len(epochs_l)):
-            for dk in DRIVE_KEYS:
-                assert len(drive_per_key[dk][i]) == len(epochs_l[i]), \
-                    f"Epoch {i}, {dk}: len {len(drive_per_key[dk][i])} vs CEBRA {len(epochs_l[i])}"
+            assert len(drive_l[i]) == len(epochs_l[i]), \
+                f"Epoch {i}: drive len {len(drive_l[i])} vs CEBRA len {len(epochs_l[i])}"
 
-        # Stack + standardize per epoch
-        drive_epochs = []
-        for i in range(len(epochs_l)):
-            components = []
-            for dk in DRIVE_KEYS:
-                v = (drive_per_key[dk][i] - drive_mu[dk]) / drive_std[dk]
-                components.append(v.reshape(-1, 1).astype(np.float32))
-            drive_epochs.append(np.column_stack(components))  # (T_i, d_drive)
-
+        # Reshape to (T, D_drive) dynamically
+        d_drive = len(DRIVE_KEYS)
+        drive_epochs = [((el - mu_l) / std_l).reshape(len(el), d_drive).astype(np.float32)
+                        for el in drive_l]
         valid_idx = [i for i in range(len(epochs_n))
                      if epochs_n[i].shape[0] >= MINI_TRAJ_LEN]
         cond_data[label] = {
             'n': [epochs_n[i] for i in valid_idx],
             'l': [epochs_l[i] for i in valid_idx],
-            'd': [drive_epochs[i] for i in valid_idx],
+            'd': [drive_epochs[i] for i in valid_idx]
         }
 
     # Train/val split: cross-epoch when >=2 epochs, within-epoch otherwise.

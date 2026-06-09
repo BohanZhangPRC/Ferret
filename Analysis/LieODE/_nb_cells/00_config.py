@@ -55,10 +55,12 @@ LAMBDA_DYN_WARMUP = 200         # steps of lambda=0 warmup before ramping
 CONSTRAINED_L = False           # True: L = -C@C.T (stable dissipation); False: unconstrained
 CEBRA_LABEL = "Velocity_x"      # column for InfoNCE contrastive labels
 DRIVE_KEYS = ["Velocity_x", "Played_frequency"]  # drive features for dynamics u(t)
-# ControlNet sees all DRIVE_KEYS simultaneously: Velocity_x provides motor
-# efference, Played_frequency provides sensory context for plane allocation.
+# Structured ControlNet: DRIVE_KEYS[0] = motor gate (multiplicative; signed, zero-centered)
+#                        DRIVE_KEYS[1:] = sensory context (determines rotation direction)
 # When CEBRA_LABEL != DRIVE_KEYS[0]: decoupled mode — embedding shaped by one
 # signal, dynamics driven by another.
+MOTOR_GATE_IDX = 0              # index of multiplicative gate in DRIVE_KEYS (-1 = naive MLP fallback)
+NORMALIZE_CTX = False           # True = ||J|| ∝ |v| exactly (SR degenerates); False = context modulates both
 ENCODER_HIDDEN = [128, 64]      # encoder hidden channel sizes
 CONTROL_HIDDEN = [32]           # control net hidden sizes
 MINI_TRAJ_LEN = 20              # mini-trajectory length in bins (~100ms at dt=0.005)
@@ -124,7 +126,8 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 print(f"Device: {DEVICE}")
 print(f"D_LATENT={D_LATENT}, USE_ODE={USE_ODE}, LAMBDA_DYN={LAMBDA_DYN}")
-print(f"DRIVE_KEYS={DRIVE_KEYS}, CONSTRAINED_L={CONSTRAINED_L}")
+print(f"DRIVE_KEYS={DRIVE_KEYS}, MOTOR_GATE_IDX={MOTOR_GATE_IDX}, NORMALIZE_CTX={NORMALIZE_CTX}")
+print(f"CONSTRAINED_L={CONSTRAINED_L}")
 print(f"CEBRA_LABEL={CEBRA_LABEL}, TEMPERATURE={TEMPERATURE}")
 print(f"N_SHUFFLES={N_SHUFFLES}, N_SEEDS={N_SEEDS}")
 print(f"VAL_ROLLOUT_LENS={VAL_ROLLOUT_LENS} bins (multi-scale)")

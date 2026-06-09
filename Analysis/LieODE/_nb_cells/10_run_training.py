@@ -48,7 +48,9 @@ for idx in tqdm(train_indices, desc="Joint Training"):
 
         model = SkieurLieODE(n_neurons, D_LATENT, d_drive,
                              constrained_L=CONSTRAINED_L,
-                             use_ode=USE_ODE, ode_method=ODE_METHOD)
+                             use_ode=USE_ODE, ode_method=ODE_METHOD,
+                             motor_gate_idx=MOTOR_GATE_IDX,
+                             normalize_ctx=NORMALIZE_CTX)
         model.to(DEVICE)
 
         model, history, val_metrics = train_one_session(
@@ -153,7 +155,9 @@ for idx in tqdm(train_indices, desc="Joint Training"):
         np.random.seed(RANDOM_SEED + idx * 100)
         model_abl = SkieurLieODE(n_neurons, D_LATENT, d_drive,
                                  constrained_L=CONSTRAINED_L,
-                                 use_ode=USE_ODE, ode_method=ODE_METHOD)
+                                 use_ode=USE_ODE, ode_method=ODE_METHOD,
+                                 motor_gate_idx=MOTOR_GATE_IDX,
+                                 normalize_ctx=NORMALIZE_CTX)
         model_abl.to(DEVICE)
         model_abl, hist_abl, _ = train_one_session(
             model_abl, n_data_session, f_df, idx,

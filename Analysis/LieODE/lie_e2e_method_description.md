@@ -324,37 +324,71 @@ Multi-scale validation ($[20, 50, 100]$ bins) produces three $R^2_{\mathrm{drive
 
 ---
 
-## 10. Limitations
+## 10. Methodological Evolution & Troubleshooting
 
-### 10.1 Single-Animal, Single-Brain-Region
+The final E2E architecture is the result of systematic troubleshooting to resolve sequential biological and geometric failures observed during development. Below is a summary of the iterative improvements:
+
+### 10.1 Initial Baseline (GhostLie V2.0)
+- **Method**: Global continuous CEBRA embedding followed by OLS-Lie fitting with tight event-triggered masks and a global circular-shift shuffle null.
+- **Result**: Demonstrated significant Skewness Ratio (SR) in both Tracking and Playback conditions, resolving earlier issues with integration dilution and null model spectrum.
+- **Failure**: When driven by `Velocity_x`, $R^2_{\mathrm{drive}}$ was near zero. Linear OLS assumes a constant rotation matrix, failing to capture state-dependent non-linear routing. When driven by `Position`, predictability emerged, but circular reasoning remained a severe confound.
+
+### 10.2 Single-Drive E2E & Drive-Label Decoupling
+- **Method**: Transitioned to joint training (E2E) using `Velocity_x` for both the InfoNCE contrastive label and the dynamical drive.
+- **Discovery**: This formulation suffered from the same severe "circular reasoning" as the two-stage baseline. If the embedding is shaped purely by velocity, predicting velocity-dependent dynamics from it becomes an algorithmic artefact.
+- **Fix**: Decoupled the embedding from the drive. Switched InfoNCE to use `Played_frequency` (sensory context) as the label, forcing the embedding to reflect the acoustic state rather than motor commands.
+
+### 10.3 Naive End-to-End Joint Training (Unstructured MLP)
+- **Method**: Retained the decoupled embedding (`Played_frequency` for InfoNCE), but fed both `[Velocity_x, Played_frequency]` into a naive, unstructured ControlNet MLP to generate the rotation matrix.
+- **Result**: Severe "Integration Dilemma". The network learned to ignore the noisy `Velocity_x` signal and simply output constant rotation based on frequency. When the animal stopped ($v=0$), rotation continued unabated, causing trajectory rollout prediction errors to explode ($R^2_{\mathrm{drive\_rollout}} \ll 0$).
+
+### 10.4 Structured ControlNet (Dual-Engine Motor-Sensory Gate)
+- **Method**: Imposed a strict physical gating constraint: $J(u_t) = g(t) \cdot \mathrm{MLP}(f(t))$. Initially, the gate was strictly motor: $g(t) = v(t)$.
+- **Discovery**: A1 is a primary sensory cortex. In Playback, the animal can be stationary ($v=0$), but the continuous acoustic progression ($df/dt$) still drives the rotation. Forcing rotation to stop when $v=0$ violates biological reality.
+- **Refinement**: Upgraded the gate to a learned linear combination of motor and sensory drives: $g(t) = \alpha \cdot v(t) + \beta \cdot \dot{f}(t)$.
+- **Result**: Perfectly learned a conservative rotational generator (SR = 0.9999, $|\mathrm{Real}| = 0.0$). However, $R^2_{\mathrm{drive\_rollout}}$ surprisingly remained negative.
+
+### 10.5 The Off-Center Manifold Crisis (Final Geometric Fix)
+- **Method**: Traced the integration failure to a fundamental topological mismatch. Euclidean InfoNCE places the embedded sequence arbitrarily far from the coordinate origin. Applying a pure Lie rotation $J \cdot z$ to an off-center manifold produces a catastrophic tangential translation, flinging the rollout trajectory into deep space.
+- **Fix** (commit `597b00a`): Pinned the manifold strictly to the origin-centered unit sphere by applying $L_2$ normalisation (`F.normalize(z, p=2, dim=-1)`) to the output of the temporal encoder. Because $\exp(J \Delta t)$ is an orthogonal (norm-preserving) matrix, the rollout trajectory natively glides along the spherical manifold without translation errors. Results pending at time of writing.
+
+---
+
+## 11. Limitations
+
+### 11.1 Single-Animal, Single-Brain-Region
 
 All results are from one animal (SKIEUR). Session-level paired t-tests do not support population-level inference. Multi-animal hierarchical modelling or explicit single-case-study framing is needed for publication-level claims. (Same as `lie_algebra_method_description.md` §12.14.)
 
-### 10.2 Circular Reasoning Not Fully Resolved
+### 11.2 Circular Reasoning — Partially Mitigated, Not Default-Resolved
 
-The InfoNCE label and the dynamics drive are both derived from $x(t)$ (head velocity). Joint optimisation mitigates but does not eliminate the concern: the embedding may still be shaped by behavioural labels in a way that makes $J(u_t)$ appear more rotational than it would be under a behaviour-agnostic embedding. The Dummy-CEBRA control and $\lambda=0$ ablation partially address this but do not constitute a definitive resolution.
+The default configuration uses `CEBRA_LABEL = "Velocity_x"` as the InfoNCE contrastive label, while the dual-engine gate uses `[Velocity_x, Freq_dot, Played_frequency]` as the dynamics drive. Because `Velocity_x` appears in both, the embedding may still be partially shaped by the same behavioural variable that drives the dynamics. **Decoupled mode is available** (`CEBRA_LABEL = "Played_frequency"`, the sensory context variable) and eliminates Trap 1 (circular reasoning) entirely — but it is not the default. The Dummy-CEBRA control and $\lambda=0$ ablation provide partial validation; explicit decoupling (`CEBRA_LABEL ≠ ` any gate variable) is recommended for publication results.
 
-### 10.3 SR Is Not Coordinate-Invariant
+### 11.3 SR Is Not Coordinate-Invariant
 
 The skew/symmetric decomposition is only physically meaningful as "rotation vs. stretch" under an isotropic metric. CEBRA/Conv1d coordinates are neither orthogonal nor endowed with a canonical metric. SR values should be interpreted as useful but coordinate-frame-dependent descriptors. (Same as `lie_algebra_method_description.md` §12.1.)
 
-### 10.4 Eigenvalues Are Not Cross-Session Comparable
+### 11.4 Eigenvalue Cross-Session Comparability
 
-Each session trains an independent encoder with no latent-space normalisation constraint. The absolute scale of $z(t)$ — and therefore of $J(u_t)$ and $L$ — is arbitrary per session. Eigenvalue magnitudes ($|\mathrm{Re}|$, $|\mathrm{Im}|$) are reported as per-session diagnostics only. Cross-session averaging of eigenvalues is not performed.
+With the L2-normalised encoder output (`F.normalize(z, p=2, dim=-1)`, commit `597b00a`), the latent manifold is pinned to the origin-centred unit sphere across all sessions. This removes the arbitrary per-session scale factor that previously made $J(u_t)$ and $L$ magnitudes incomparable. Cross-session eigenvalue statistics are now mathematically meaningful. **Caveat:** the normalisation constrains $\lVert z\rVert = 1$, which implicitly rescales the learned generator. $|\mathrm{Im}|$ values now have a natural interpretation as angular velocity on the unit sphere (radians per timestep).
 
-### 10.5 Short-Window Validation Scope
+### 11.5 Short-Window Validation Scope
 
 $R^2_{\mathrm{drive}}$ is validated on windows of 20–100 bins (100–500 ms). The model is trained on 20-bin trajectories. While multi-scale validation probes generalisation to longer horizons, the model has not been trained to capture epoch-scale dynamics. Positive $R^2_{\mathrm{drive}}$ at 500 ms does not imply the model captures the full dynamical structure of the system.
 
-### 10.6 $N_{\mathrm{SHUFFLES}} = 50$ Is Screening-Level
+### 11.6 $N_{\mathrm{SHUFFLES}} = 50$ Is Screening-Level
 
 With 50 shuffle realisations, the minimum resolvable permutation $p$-value is approximately $1/51 \approx 0.02$. This is sufficient for screening but not for formal inference with multiple-comparison correction. $\geq 500$ realisations are recommended for publication.
 
-### 10.7 ODE Mode Is Experimental
+### 11.7 ODE Mode Is Experimental
 
 The default transition is discrete `matrix_exp`. When `USE_ODE = True`, the drive is interpolated piecewise-constant (nearest-neighbour), meaning the "continuous-time ODE" claim is not yet realised. Adaptive solvers (`dopri5`) may be unstable at bin boundaries. The ODE mode is provided for future exploration and should not be cited as a methodological contribution in the current form.
 
-### 10.8 Multi-Dim Drive (Implemented)
+### 11.7b L2-Normalised Manifold Constraint
+
+The encoder output is L2-normalised per timepoint (`F.normalize(z, p=2, dim=-1)`, commit `597b00a`) to pin the manifold to the origin-centred unit sphere — a mathematical necessity for pure Lie algebra rotation $J \cdot z$. This constraint has two implications: (a) the manifold is forced onto $\mathbb{S}^{D-1}$, which may not reflect the true neural population geometry; (b) the dynamics loss operates on normalised $z$, which reduces the variance available for MSE differentiation. The variance-based normalisation of the dynamics loss (§5.2) partially mitigates (b).
+
+### 11.8 Multi-Dim Drive (Implemented)
 
 Multi-dimensional drive extraction is fully implemented (commit `97de7f0`, cf454df). `train_one_session` calls `extract_epochs` separately for each `DRIVE_KEYS` column (since `extract_macro_epochs` uses Condition boundaries, all extractions produce identical epoch boundaries), standardises each dimension independently (pooled TR+PB via per-dimension `drive_mu[dk]`/`drive_std[dk]` dicts), and stacks them via `np.column_stack` into a `(T_i, d_drive)` array. Sanity checks assert identical epoch counts and lengths across dimensions.
 
@@ -362,17 +396,17 @@ The default `DRIVE_KEYS = ["Velocity_x", "Freq_dot", "Played_frequency"]` feeds 
 
 **Important caveat for multi-scale $R^2$ comparisons**: as the gate dimensionality changes between configurations (e.g. single-gate `[Velocity_x]` vs. dual-gate `[Velocity_x, Freq_dot, Played_frequency]`), the ControlNet architecture and parameter count change. Cross-configuration $R^2$ comparisons should control for parameter count (e.g. by matching the total number of trainable parameters in the control pathway).
 
-### 10.9 Kinematic Confound
+### 11.9 Kinematic Confound
 
 Velocity distributions may differ between Tracking and Playback. If the animal moves less during Playback, the drive dynamic range is smaller, mechanically reducing $R^2_{\mathrm{drive}}$ independent of neural computation. Velocity distribution diagnostics (KS test, RMS comparison) are reported, but no formal covariate correction (e.g. velocity-range matching or ANCOVA) is performed.
 
-### 10.10 Baseline vs. E2E $R^2_{\mathrm{drive}}$ Are Different Estimators
+### 11.10 Baseline vs. E2E $R^2_{\mathrm{drive}}$ Are Different Estimators
 
 The baseline $R^2_{\mathrm{drive}}$ (derivative-based OLS) and E2E $R^2_{\mathrm{drive}}$ (trajectory-rollout MSE) are fundamentally different quantities. Direct numerical comparison (e.g. on a $y = x$ scatter) is **not valid**. Each pipeline's $R^2_{\mathrm{drive}}$ is gated only against its **own null distribution**.
 
 ---
 
-## 11. Reproducibility
+## 12. Reproducibility
 
 - **Random seed**: `RANDOM_SEED = 42` for `numpy`, `torch`, and CUDA.
 - **Multi-seed**: 3 seeds per session with per-seed `RANDOM_SEED + idx * 100 + seed`.
@@ -382,7 +416,7 @@ The baseline $R^2_{\mathrm{drive}}$ (derivative-based OLS) and E2E $R^2_{\mathrm
 
 ---
 
-## 12. References
+## 13. References
 
 The same reference list as `lie_algebra_method_description.md` applies, with the following additions relevant to the E2E framework:
 

@@ -64,21 +64,34 @@ $D(D-1)/2$ fixed orthonormal skew-symmetric basis matrices $G_k \in \mathbb{R}^{
 
 The basis is constructed with exactly two non-zero entries per matrix: $G_k[i,j] = 1/\sqrt{2}$, $G_k[j,i] = -1/\sqrt{2}$.
 
-**Key difference from the two-stage pipeline**: the basis matrices are fixed buffers with **no learnable parameters**. All learnable rotation structure comes from the ControlNet.
+**Key difference from the two-stage pipeline**: the basis matrices are fixed buffers with **no learnable parameters**. All learnable rotation structure comes from the Control Network.
 
-#### Control Network (ControlNet)
+#### Control Network — Dual-Engine Structured Gate (StructuredControlNet)
 
-A small MLP mapping the multi-dimensional behavioural drive $u_t \in \mathbb{R}^{D_{\mathrm{drive}}}$ to scalar weights $w_k(u_t)$:
+The default control architecture (`N_GATE_DIMS = 2`, `MOTOR_GATE_IDX = -1` for naive fallback) implements an A1-biologically-motivated **dual-engine gate** that separates the drive into two functional streams:
 
-$$w(u_t) = \tanh(\mathrm{MLP}(u_t)) \in \mathbb{R}^{D(D-1)/2}$$
+**Gate variables** $u_t[0:2] = [v(t), \dot{f}(t)]$ (Velocity_x, Freq_dot):
+$$\text{gate}(t) = \alpha \cdot v(t) + \beta \cdot \dot{f}(t) \in \mathbb{R}^1$$
 
-The time-varying skew-symmetric generator is then:
+where $\alpha, \beta$ are learned via `nn.Linear(2, 1, bias=False)`. The `bias=False` constraint preserves the physical boundary condition: **both signals zero $\Rightarrow$ gate $= 0 \Rightarrow J = 0$**.
 
-$$J(u_t) = \sum_{k=1}^{D(D-1)/2} w_k(u_t) \cdot G_k$$
+**Sensory context** $u_t[2:] = [f(t)]$ (Played_frequency):
+$$h(t) = \text{MLP}_{\text{ctx}}(f(t)) \in \mathbb{R}^{D(D-1)/2}$$
 
-Because each $G_k$ is skew-symmetric by construction, $J(u_t)$ is **guaranteed skew-symmetric** throughout training — no post-hoc projection needed. This is the strict Lie parameterisation (improvement #2).
+The full generator:
+$$J(u_t) = \text{gate}(t) \cdot \sum_{k=1}^{D(D-1)/2} h_k(t) \cdot G_k = (\alpha v + \beta \dot{f}) \cdot \tilde{J}(f)$$
 
-**Key difference from the two-stage pipeline**: the two-stage pipeline uses a single fixed $J_{\mathrm{skew}}$ scalar-gated by $x(t)$. The E2E pipeline learns a **nonlinear mapping from drive to generator**, enabling the model to produce different rotational structures depending on the behavioural context (e.g. different rotation planes for velocity vs. position). This is improvement #4 (nonlinear multidim forward model).
+**Why dual-engine for A1 auditory cortex?** A1 is not a pure motor area — its neural manifold rotates under two independent forces:
+1. **Acoustic drive** ($\dot{f}$): sound frequency changes push the manifold forward regardless of movement. Dominant in Playback, where $v \approx 0$ but the acoustic sequence continues.
+2. **Motor efference** ($v$): head movement modulates the rotation amplitude. Dominant in Tracking, where $\dot{f} \propto v$.
+
+A pure motor gate ($w = v \cdot \text{MLP}(f)$) fails in Playback: $v = 0 \Rightarrow J = 0$, but the auditory manifold is actively rotating with the acoustic stream. The dual-engine gate resolves this by letting $\beta \cdot \dot{f}$ sustain rotation when the animal is still but sound continues.
+
+**In Tracking**, $\dot{f} \propto v$ (sound tracks movement) — both terms resonate, producing the strongest structured rotation. **In Playback**, $\dot{f}$ and $v$ are decoupled — the network must learn to weight the acoustic drive more heavily.
+
+Naive fallback (`N_GATE_DIMS = -1`): uses the original `ControlNet` — an unstructured MLP with $\tanh$ output. Provided for ablation and regression testing.
+
+Because each $G_k$ is skew-symmetric by construction, $J(u_t)$ is **guaranteed skew-symmetric** throughout training — no post-hoc projection needed. This is the strict Lie parameterisation (improvement #2). The dual-engine gate is improvement #4 (nonlinear multidim forward model) with biological structure imposed.
 
 #### Dissipation (Leak)
 
@@ -341,9 +354,13 @@ With 50 shuffle realisations, the minimum resolvable permutation $p$-value is ap
 
 The default transition is discrete `matrix_exp`. When `USE_ODE = True`, the drive is interpolated piecewise-constant (nearest-neighbour), meaning the "continuous-time ODE" claim is not yet realised. Adaptive solvers (`dopri5`) may be unstable at bin boundaries. The ODE mode is provided for future exploration and should not be cited as a methodological contribution in the current form.
 
-### 10.8 Multi-Dim Drive Not Yet Implemented
+### 10.8 Multi-Dim Drive (Implemented)
 
-The ControlNet architecture supports arbitrary drive dimensionality, but the training pipeline currently uses only `Velocity_x` labels as the drive. Extending to multi-dimensional drives (e.g. `[Velocity_x, Position, Acc_x, freq_error]`) requires per-epoch multi-dim drive extraction with TAU_SHIFT alignment — not yet implemented. The `DRIVE_KEYS` configuration raises `NotImplementedError` if set to anything other than `["Velocity_x"]`.
+Multi-dimensional drive extraction is fully implemented (commit `97de7f0`, cf454df). `train_one_session` calls `extract_epochs` separately for each `DRIVE_KEYS` column (since `extract_macro_epochs` uses Condition boundaries, all extractions produce identical epoch boundaries), standardises each dimension independently (pooled TR+PB via per-dimension `drive_mu[dk]`/`drive_std[dk]` dicts), and stacks them via `np.column_stack` into a `(T_i, d_drive)` array. Sanity checks assert identical epoch counts and lengths across dimensions.
+
+The default `DRIVE_KEYS = ["Velocity_x", "Freq_dot", "Played_frequency"]` feeds the dual-engine StructuredControlNet. `build_drive_vector()` is defined but never called in the training path (dead code; retained for OLS baseline compatibility).
+
+**Important caveat for multi-scale $R^2$ comparisons**: as the gate dimensionality changes between configurations (e.g. single-gate `[Velocity_x]` vs. dual-gate `[Velocity_x, Freq_dot, Played_frequency]`), the ControlNet architecture and parameter count change. Cross-configuration $R^2$ comparisons should control for parameter count (e.g. by matching the total number of trainable parameters in the control pathway).
 
 ### 10.9 Kinematic Confound
 

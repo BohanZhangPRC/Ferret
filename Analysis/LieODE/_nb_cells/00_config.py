@@ -54,12 +54,13 @@ LAMBDA_DYN = 0.1                # dynamics loss weight
 LAMBDA_DYN_WARMUP = 200         # steps of lambda=0 warmup before ramping
 CONSTRAINED_L = False           # True: L = -C@C.T (stable dissipation); False: unconstrained
 CEBRA_LABEL = "Velocity_x"      # column for InfoNCE contrastive labels
-DRIVE_KEYS = ["Velocity_x", "Played_frequency"]  # drive features for dynamics u(t)
-# Structured ControlNet: DRIVE_KEYS[0] = motor gate (multiplicative; signed, zero-centered)
-#                        DRIVE_KEYS[1:] = sensory context (determines rotation direction)
-# When CEBRA_LABEL != DRIVE_KEYS[0]: decoupled mode — embedding shaped by one
-# signal, dynamics driven by another.
-MOTOR_GATE_IDX = 0              # index of multiplicative gate in DRIVE_KEYS (-1 = naive MLP fallback)
+DRIVE_KEYS = ["Velocity_x", "Freq_dot", "Played_frequency"]  # [0:2]=gate, [2:]=context
+# Dual-engine gate: gate = α*Velocity_x + β*Freq_dot (nn.Linear(2,1,bias=False))
+#   Velocity_x — motor efference (internal drive; dominant in Tracking)
+#   Freq_dot   — acoustic drive df/dt (external drive; dominant in Playback)
+#   Played_frequency — sensory context for MLP_plane (rotation direction)
+# Bias=False preserves: both signals zero → gate=0 → J=0 (physical boundary)
+N_GATE_DIMS = 2                 # number of gate variables before context (-1 = naive MLP fallback)
 NORMALIZE_CTX = False           # True = ||J|| ∝ |v| exactly (SR degenerates); False = context modulates both
 ENCODER_HIDDEN = [128, 64]      # encoder hidden channel sizes
 CONTROL_HIDDEN = [32]           # control net hidden sizes
@@ -126,7 +127,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 print(f"Device: {DEVICE}")
 print(f"D_LATENT={D_LATENT}, USE_ODE={USE_ODE}, LAMBDA_DYN={LAMBDA_DYN}")
-print(f"DRIVE_KEYS={DRIVE_KEYS}, MOTOR_GATE_IDX={MOTOR_GATE_IDX}, NORMALIZE_CTX={NORMALIZE_CTX}")
+print(f"DRIVE_KEYS={DRIVE_KEYS}, N_GATE_DIMS={N_GATE_DIMS}, NORMALIZE_CTX={NORMALIZE_CTX}")
 print(f"CONSTRAINED_L={CONSTRAINED_L}")
 print(f"CEBRA_LABEL={CEBRA_LABEL}, TEMPERATURE={TEMPERATURE}")
 print(f"N_SHUFFLES={N_SHUFFLES}, N_SEEDS={N_SEEDS}")

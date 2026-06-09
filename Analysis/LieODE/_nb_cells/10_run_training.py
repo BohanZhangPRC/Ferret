@@ -49,7 +49,7 @@ for idx in tqdm(train_indices, desc="Joint Training"):
         model = SkieurLieODE(n_neurons, D_LATENT, d_drive,
                              constrained_L=CONSTRAINED_L,
                              use_ode=USE_ODE, ode_method=ODE_METHOD,
-                             motor_gate_idx=MOTOR_GATE_IDX,
+                             n_gate_dims=N_GATE_DIMS,
                              normalize_ctx=NORMALIZE_CTX)
         model.to(DEVICE)
 
@@ -156,7 +156,7 @@ for idx in tqdm(train_indices, desc="Joint Training"):
         model_abl = SkieurLieODE(n_neurons, D_LATENT, d_drive,
                                  constrained_L=CONSTRAINED_L,
                                  use_ode=USE_ODE, ode_method=ODE_METHOD,
-                                 motor_gate_idx=MOTOR_GATE_IDX,
+                                 n_gate_dims=N_GATE_DIMS,
                                  normalize_ctx=NORMALIZE_CTX)
         model_abl.to(DEVICE)
         model_abl, hist_abl, _ = train_one_session(

@@ -45,7 +45,7 @@ class ControlNet(nn.Module):
 
     J(u_t) = sum_i w_i(u_t) * G_i, where w_i come from a small MLP.
 
-    This is the fallback when MOTOR_GATE_IDX = -1.  The MLP learns an
+    This is the fallback when N_GATE_DIMS = -1.  The MLP learns an
     arbitrary mapping from all drive dimensions to basis weights — no
     physical constraint on how the motor command gates rotation.
     """
@@ -70,27 +70,30 @@ class ControlNet(nn.Module):
 
 
 class StructuredControlNet(nn.Module):
-    """Physically-constrained control: w_i(t) = v(t) * MLP_i(f(t)).
+    """Dual-engine structured control: w_i(t) = gate(u_t) * MLP_i(f(t)).
 
-    v(t) = DRIVE_KEYS[0]   — motor gate (multiplicative; signed, zero-centered)
-    f(t) = DRIVE_KEYS[1:]  — sensory context (determines rotation direction)
+    gate = α_1*gate_var_1 + ... + α_k*gate_var_k  (nn.Linear, bias=False)
+    f(t) = remaining drive dims                    (sensory context)
 
-    The multiplicative gate enforces the boundary condition:
-        v(t) = 0  =>  J(v, f) = 0   for all f
+    The gate is a learned linear combination of multiple drive signals
+    (e.g., Velocity_x + Freq_dot for A1 sensorimotor integration).
+    bias=False preserves the physical boundary condition:
+        all gate signals = 0  =>  gate = 0  =>  J = 0
 
-    This implements the forward-model architecture (Wolpert 1995):
-    the motor command gates the predictive update; the sensory context
-    determines which rotational planes are engaged.
+    In Playback:  Freq_dot ≠ 0 → gate non-zero → rotation continues at v=0
+    In Tracking:  Freq_dot ∝ v → both terms resonate → strongest rotation
 
-    When normalize=False (default), ||J|| depends on both |v| and the
-    context MLP's output, making SR informative about learned structure.
-    When normalize=True, ||J|| ∝ |v| exactly (SR degenerates).
+    When normalize=False (default), ||J|| depends on both gate magnitude and
+    the context MLP's output, making SR informative about learned structure.
+    When normalize=True, ||J|| ∝ |gate| exactly (SR degenerates).
     """
-    def __init__(self, ctx_dim, n_basis, hidden=None, normalize=False):
+    def __init__(self, n_gate_dims, ctx_dim, n_basis, hidden=None, normalize=False):
         super().__init__()
         if hidden is None:
             hidden = CONTROL_HIDDEN
+        self.n_gate_dims = n_gate_dims
         self.normalize = normalize
+        self.gate_linear = nn.Linear(n_gate_dims, 1, bias=False)
         layers = []
         in_dim = ctx_dim
         for h in hidden:
@@ -102,18 +105,19 @@ class StructuredControlNet(nn.Module):
             self.log_scale = nn.Parameter(torch.zeros(1))  # softplus -> ~0.69
 
     def forward(self, u_t):
-        """u_t: (*, drive_dim) where u_t[..., 0] = v (motor gate).
+        """u_t: (*, drive_dim) where u_t[..., :n_gate_dims] = gate vars,
+        u_t[..., n_gate_dims:] = sensory context.
 
         Returns w_i: (*, n_basis).
         """
-        v = u_t[..., 0:1]            # (*, 1) — motor gate
-        f = u_t[..., 1:]             # (*, ctx_dim) — sensory context
-        h = self.ctx_net(f)          # (*, n_basis) — direction + magnitude
+        gate = self.gate_linear(u_t[..., :self.n_gate_dims])  # (*, 1)
+        f = u_t[..., self.n_gate_dims:]                        # (*, ctx_dim)
+        h = self.ctx_net(f)                                     # (*, n_basis)
         if self.normalize:
             h_dir = h / (torch.norm(h, dim=-1, keepdim=True) + 1e-6)
             s = F.softplus(self.log_scale)
-            return v * h_dir * s
-        return v * h                 # (*, n_basis) — multiplicative gate
+            return gate * h_dir * s
+        return gate * h
 
 
 class Dissipation(nn.Module):
@@ -151,12 +155,12 @@ class LieODECell(nn.Module):
     - ode:      z(t) = odeint(dz/dt, z_0, t_span) (requires torchdiffeq)
     """
     def __init__(self, dim, n_basis, constrained_L=False, use_ode=False,
-                 ode_method="rk4", motor_gate_idx=0, normalize_ctx=False):
+                 ode_method="rk4", n_gate_dims=2, normalize_ctx=False):
         super().__init__()
         self.dim = dim
         self.use_ode = use_ode
         self.ode_method = ode_method
-        self.motor_gate_idx = motor_gate_idx
+        self.n_gate_dims = n_gate_dims
         self.normalize_ctx = normalize_ctx
         self.skew_basis = SkewBasis(dim)
         # Placeholder — will be replaced by set_control_input_dim
@@ -166,16 +170,16 @@ class LieODECell(nn.Module):
     def set_control_input_dim(self, drive_dim):
         """Rebuild control net for the given drive_dim.
 
-        When motor_gate_idx >= 0: uses StructuredControlNet with
-        ctx_dim = drive_dim - 1 (drive_dim minus the motor gate).
-        When motor_gate_idx = -1: uses naive ControlNet (fallback).
+        When n_gate_dims >= 1 and drive_dim > n_gate_dims: uses
+        StructuredControlNet with ctx_dim = drive_dim - n_gate_dims.
+        When n_gate_dims = -1: uses naive ControlNet (fallback).
         """
         n_basis = self.dim * (self.dim - 1) // 2
         self.drive_dim = drive_dim  # stored for get_generator_matrices
-        if self.motor_gate_idx >= 0 and drive_dim >= 2:
-            ctx_dim = drive_dim - 1  # remaining dims after motor gate
+        if self.n_gate_dims >= 1 and drive_dim > self.n_gate_dims:
+            ctx_dim = drive_dim - self.n_gate_dims
             self.control = StructuredControlNet(
-                ctx_dim, n_basis, normalize=self.normalize_ctx)
+                self.n_gate_dims, ctx_dim, n_basis, normalize=self.normalize_ctx)
         else:
             self.control = ControlNet(drive_dim, n_basis)
 
@@ -302,7 +306,7 @@ class SkieurLieODE(nn.Module):
     """
     def __init__(self, n_neurons, latent_dim, drive_dim,
                  constrained_L=False, use_ode=False, ode_method="rk4",
-                 motor_gate_idx=0, normalize_ctx=False):
+                 n_gate_dims=2, normalize_ctx=False):
         super().__init__()
         n_basis = latent_dim * (latent_dim - 1) // 2
         self.latent_dim = latent_dim
@@ -310,7 +314,7 @@ class SkieurLieODE(nn.Module):
         self.lie_cell = LieODECell(latent_dim, n_basis,
                                    constrained_L=constrained_L,
                                    use_ode=use_ode, ode_method=ode_method,
-                                   motor_gate_idx=motor_gate_idx,
+                                   n_gate_dims=n_gate_dims,
                                    normalize_ctx=normalize_ctx)
         self.lie_cell.set_control_input_dim(drive_dim)
 
@@ -389,13 +393,13 @@ d_drive = len(DRIVE_KEYS)
 model = SkieurLieODE(n_test, D_LATENT, d_drive,
                      constrained_L=CONSTRAINED_L,
                      use_ode=USE_ODE, ode_method=ODE_METHOD,
-                     motor_gate_idx=MOTOR_GATE_IDX,
+                     n_gate_dims=N_GATE_DIMS,
                      normalize_ctx=NORMALIZE_CTX)
 model.to(DEVICE)
 n_params = sum(p.numel() for p in model.parameters())
 control_type = type(model.lie_cell.control).__name__
 print(f"Model: {n_params:,} parameters")
-print(f"  ControlNet: {control_type} (motor_gate_idx={MOTOR_GATE_IDX}, normalize_ctx={NORMALIZE_CTX})")
+print(f"  ControlNet: {control_type} (n_gate_dims={N_GATE_DIMS}, normalize_ctx={NORMALIZE_CTX})")
 print(f"  Encoder: Conv1d offset-11, {n_test} -> {D_LATENT} (comparable to CEBRA offset10)")
 print(f"  Skew basis: {D_LATENT}*(D_LATENT-1)/2 = {D_LATENT*(D_LATENT-1)//2}")
 print(f"  Drive dim: {d_drive} = {DRIVE_KEYS}")

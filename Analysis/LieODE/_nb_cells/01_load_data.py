@@ -21,12 +21,17 @@ print("Loading hs1...")
 n_data_hs1, f_data_hs1 = load_pickled_ss("SKIEUR_hs_1", SESSION_TYPE, dt)
 print(f"  hs1: {len(n_data_hs1)} sessions")
 
-# Add Velocity_x
+# Add Velocity_x and Freq_dot (dual-engine gate for A1 sensorimotor dynamics)
 for f_df in f_data_hs0 + f_data_hs1:
     pos = f_df["Position"].values
     vel = np.diff(pos); vel = np.append(0, vel)
     vel = vel * 100; vel[~np.isfinite(vel)] = 0
     f_df["Velocity_x"] = vel
+
+    freq = f_df["Played_frequency"].values
+    freq_dot = np.diff(freq); freq_dot = np.append(0, freq_dot)
+    freq_dot[~np.isfinite(freq_dot)] = 0
+    f_df["Freq_dot"] = freq_dot
 
 n_data_all_raw = list(n_data_hs0) + list(n_data_hs1)
 f_data_all_raw = list(f_data_hs0) + list(f_data_hs1)

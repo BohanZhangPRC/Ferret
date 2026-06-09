@@ -171,6 +171,7 @@ class LieODECell(nn.Module):
         When motor_gate_idx = -1: uses naive ControlNet (fallback).
         """
         n_basis = self.dim * (self.dim - 1) // 2
+        self.drive_dim = drive_dim  # stored for get_generator_matrices
         if self.motor_gate_idx >= 0 and drive_dim >= 2:
             ctx_dim = drive_dim - 1  # remaining dims after motor gate
             self.control = StructuredControlNet(
@@ -354,7 +355,7 @@ class SkieurLieODE(nn.Module):
         """
         with torch.no_grad():
             dev = next(self.parameters()).device
-            d_drive = self.lie_cell.control.net[0].in_features
+            d_drive = self.lie_cell.drive_dim  # stored by set_control_input_dim
             u_samples = torch.randn(n_drive_samples, d_drive, device=dev)
             _, J_samples, L = self.lie_cell.compute_generator(u_samples)
             L_np = L.cpu().numpy()

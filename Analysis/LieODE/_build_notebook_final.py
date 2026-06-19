@@ -67,7 +67,8 @@ for filename, cell_type in CELLS:
             'cell_type': 'code',
             'metadata': {},
             'source': lines,
-            'outputs': []
+            'outputs': [],
+            'execution_count': None
         })
     else:
         nb['cells'].append({

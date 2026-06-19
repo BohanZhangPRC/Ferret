@@ -159,6 +159,41 @@ with open(out_path, "w") as f:
     except NameError:
         f.write("  (Not run)\n\n")
 
+    # --- Wasserstein ---
+    f.write("=" * 70 + "\n")
+    f.write("  4. Wasserstein Manifold Analysis\n")
+    f.write("=" * 70 + "\n")
+    try:
+        if 'wass_df' in dir() and wass_df is not None:
+            f.write(f"  N sessions: {len(wass_df)}\n")
+            f.write(f"  W2(TR vs PB) true:       {wass_df['W2_TR_vs_PB'].mean():.4f}"
+                    f"  +/- {wass_df['W2_TR_vs_PB'].sem():.4f}\n")
+            f.write(f"  W2(TR vs PB) shuffle:    {wass_df['W2_TR_vs_PB_shuffle'].mean():.4f}"
+                    f"  +/- {wass_df['W2_TR_vs_PB_shuffle_sem'].mean():.4f}\n")
+            f.write(f"  W2 ratio (true/shuffle): {wass_df['W2_ratio'].mean():.2f}"
+                    f"  +/- {wass_df['W2_ratio'].sem():.2f}\n")
+            f.write(f"  TR self-W2 (half-split): {wass_df['W2_TR_self'].mean():.4f}"
+                    f"  +/- {wass_df['W2_TR_self'].sem():.4f}\n")
+            f.write(f"  PB self-W2 (half-split): {wass_df['W2_PB_self'].mean():.4f}"
+                    f"  +/- {wass_df['W2_PB_self'].sem():.4f}\n")
+            if len(wass_df) > 1:
+                tr_s = wass_df['W2_TR_self'].values
+                pb_s = wass_df['W2_PB_self'].values
+                t_s, p_s = ttest_rel(tr_s, pb_s)
+                tighter = "Tracking" if np.mean(tr_s) < np.mean(pb_s) else "Playback"
+                f.write(f"  TR vs PB self-W2 paired t: t={t_s:.3f}, p={p_s:.4f}\n")
+                f.write(f"  → {tighter} manifold is tighter\n")
+            f.write(f"  Per-session W2 ratios: {wass_df['W2_ratio'].round(2).tolist()}\n")
+            f.write(f"  Physical interpretation:\n")
+            f.write(f"    W2 > shuffle → TR/PB occupy different neural state regions\n")
+            f.write(f"    TR_self < PB_self → Tracking manifold is more compact (lower entropy)\n")
+            f.write(f"    W2 difference → 'control energy' cost of closed-loop dynamics\n")
+        else:
+            f.write("  (Not run — install POT: pip install POT)\n")
+    except NameError:
+        f.write("  (Not run)\n")
+    f.write("\n")
+
     f.write("=" * 70 + "\n")
     f.write("  End of Report\n")
     f.write("=" * 70 + "\n")

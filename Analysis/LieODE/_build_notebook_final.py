@@ -27,6 +27,8 @@ CELLS = [
     ("11_md_results.md", "markdown"),
     ("12_results_comparison.py", "code"),
     ("13_tracking_vs_playback.py", "code"),
+    ("13b_md_wasserstein.md", "markdown"),
+    ("17_wasserstein.py", "code"),
     ("14_summary.py", "code"),
     ("16_cleanup_final.py", "code"),
 ]

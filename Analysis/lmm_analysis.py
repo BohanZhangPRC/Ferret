@@ -317,12 +317,19 @@ def run_lmm_analysis(traj_by_half_mp1, traj_by_half_mp2, time_array,
     print(f"  Model 1 (ML): LL = {result1_ml.llf:.2f}")
 
     if used_random_slope:
-        result2_ml = smf.mixedlm(
-            formula_full, df_lmm, groups=df_lmm["neuron_id"],
-            re_formula="~ condition",
-            vc_formula=vc_lrt
-        ).fit(reml=False)
-        print(f"  Model 2 (ML): LL = {result2_ml.llf:.2f}")
+        try:
+            result2_ml = smf.mixedlm(
+                formula_full, df_lmm, groups=df_lmm["neuron_id"],
+                re_formula="~ condition",
+                vc_formula=vc_lrt
+            ).fit(reml=False)
+            print(f"  Model 2 (ML): LL = {result2_ml.llf:.2f}")
+        except (np.linalg.LinAlgError, Exception) as e:
+            print(f"  WARNING: Model 2 (ML) failed: {e}")
+            print(f"    Falling back to Model 1 (ML) for LRT comparisons.")
+            result2_ml = result1_ml
+            used_random_slope = False
+            re_formula_lrt = None   # must match full model's random structure
     else:
         result2_ml = result1_ml
 
